@@ -35,6 +35,7 @@ const config: Config = {
         "soft-pulse": "soft-pulse 2.5s ease-in-out infinite",
         "shine": "shine 1.5s ease-in-out",
         "typing": "typing 2.8s steps(58) 0.5s forwards",
+        "step-glow": "step-glow 2s ease-in-out infinite",
       },
       keyframes: {
         "fade-in-up": {
@@ -64,6 +65,10 @@ const config: Config = {
         "typing": {
           "0%": { maxWidth: "0" },
           "100%": { maxWidth: "60ch" },
+        },
+        "step-glow": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(29, 91, 184, 0.4)" },
+          "50%": { boxShadow: "0 0 24px 8px rgba(29, 91, 184, 0.2)" },
         },
       },
       backgroundImage: {
