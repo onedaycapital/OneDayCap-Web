@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,7 +26,10 @@ export default function RootLayout({
         <script src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.25.0-min.js.gz"></script>
         <script dangerouslySetInnerHTML={{__html: `window.amplitude.add(window.sessionReplay.plugin({sampleRate: 1}));window.amplitude.init('17dea7f302865cf69e3fee139aa1885c', {"autocapture":{"elementInteractions":true}});`}} />
       </head>
-      <body className="antialiased font-sans">{children}</body>
+      <body className="antialiased font-sans">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
