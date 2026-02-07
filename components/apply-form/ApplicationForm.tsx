@@ -319,20 +319,11 @@ export function ApplicationForm() {
           financial: formData.financial,
           creditOwnership: formData.creditOwnership,
           signature: formData.signature,
+          documents: formData.documents, // Include uploaded file metadata
         };
         const fd = new FormData();
         fd.append("payload", JSON.stringify(payload));
-        if (formData.documents.bankStatements) {
-          for (let i = 0; i < formData.documents.bankStatements.length; i++) {
-            fd.append("bank_statements", formData.documents.bankStatements[i]);
-          }
-        }
-        if (formData.documents.voidCheck?.length) {
-          fd.append("void_check", formData.documents.voidCheck[0]);
-        }
-        if (formData.documents.driversLicense?.length) {
-          fd.append("drivers_license", formData.documents.driversLicense[0]);
-        }
+        
         let result;
         try {
           result = await submitApplication(fd);

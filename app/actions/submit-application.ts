@@ -17,7 +17,16 @@ const INTERNAL_EMAIL = "subs@onedaycap.com";
 
 const BUCKET = "merchant-documents";
 
-/** Payload from the form (JSON); documents are omitted, files sent separately in FormData */
+/** Uploaded file metadata */
+export interface UploadedFileMetadata {
+  storage_path: string;
+  file_name: string;
+  file_size: number;
+  content_type: string;
+  uploaded_at: string;
+}
+
+/** Payload from the form (JSON); includes uploaded file metadata */
 export interface SubmitPayload {
   personal: {
     firstName: string;
@@ -55,6 +64,11 @@ export interface SubmitPayload {
     signatureDataUrl: string | null;
     signedAt: string | null;
     auditId: string | null;
+  };
+  documents: {
+    bankStatements: UploadedFileMetadata[];
+    voidCheck: UploadedFileMetadata | null;
+    driversLicense: UploadedFileMetadata | null;
   };
 }
 
@@ -133,40 +147,85 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       })
       .eq("id", applicationId);
 
-    // Upload files: FormData keys are bank_statements (multiple), void_check, drivers_license
-    const fileTypes = [
-      { key: "bank_statements", type: "bank_statements" as const },
-      { key: "void_check", type: "void_check" as const },
-      { key: "drivers_license", type: "drivers_license" as const },
-    ] as const;
-
-    for (const { key, type } of fileTypes) {
-      const entries = formData.getAll(key);
-      for (let i = 0; i < entries.length; i++) {
-        const file = entries[i];
-        if (!(file instanceof File) || file.size === 0) continue;
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storagePath = `${applicationId}/${type}/${safeName}`;
-        const { error: uploadError } = await supabase.storage
+    // Link uploaded files to application
+    // Files were already uploaded directly to Supabase storage via presigned URLs
+    // Now we just need to create records linking them to this application
+    console.log(LOG_PREFIX, "linking uploaded files to application");
+    
+    const uploadedFiles = payload.documents || { bankStatements: [], voidCheck: null, driversLicense: null };
+    
+    // Bank statements (multiple)
+    for (const fileMetadata of uploadedFiles.bankStatements || []) {
+      if (fileMetadata && fileMetadata.storage_path) {
+        // Move file from temp to final location
+        const tempPath = fileMetadata.storage_path;
+        const finalPath = tempPath.replace(/^temp\//, `${applicationId}/`);
+        
+        // Copy to final location
+        const { error: moveError } = await supabase.storage
           .from(BUCKET)
-          .upload(storagePath, file, {
-            contentType: file.type || "application/octet-stream",
-            upsert: false,
-          });
-        if (uploadError) {
-          console.error("Storage upload error:", uploadError);
-          // Don't fail the whole submit; application is already saved
-          continue;
+          .move(tempPath, finalPath);
+        
+        if (moveError) {
+          console.error("Error moving file:", moveError);
+          // Continue anyway, file is still accessible at temp location
         }
+        
         await supabase.from("merchant_application_files").insert({
           application_id: applicationId,
-          file_type: type,
-          file_name: file.name,
-          storage_path: storagePath,
-          content_type: file.type || null,
-          file_size_bytes: file.size,
+          file_type: "bank_statements",
+          file_name: fileMetadata.file_name,
+          storage_path: moveError ? tempPath : finalPath,
+          content_type: fileMetadata.content_type || null,
+          file_size_bytes: fileMetadata.file_size,
         });
       }
+    }
+    
+    // Void check (single)
+    if (uploadedFiles.voidCheck && uploadedFiles.voidCheck.storage_path) {
+      const tempPath = uploadedFiles.voidCheck.storage_path;
+      const finalPath = tempPath.replace(/^temp\//, `${applicationId}/`);
+      
+      const { error: moveError } = await supabase.storage
+        .from(BUCKET)
+        .move(tempPath, finalPath);
+      
+      if (moveError) {
+        console.error("Error moving file:", moveError);
+      }
+      
+      await supabase.from("merchant_application_files").insert({
+        application_id: applicationId,
+        file_type: "void_check",
+        file_name: uploadedFiles.voidCheck.file_name,
+        storage_path: moveError ? tempPath : finalPath,
+        content_type: uploadedFiles.voidCheck.content_type || null,
+        file_size_bytes: uploadedFiles.voidCheck.file_size,
+      });
+    }
+    
+    // Driver's license (single)
+    if (uploadedFiles.driversLicense && uploadedFiles.driversLicense.storage_path) {
+      const tempPath = uploadedFiles.driversLicense.storage_path;
+      const finalPath = tempPath.replace(/^temp\//, `${applicationId}/`);
+      
+      const { error: moveError } = await supabase.storage
+        .from(BUCKET)
+        .move(tempPath, finalPath);
+      
+      if (moveError) {
+        console.error("Error moving file:", moveError);
+      }
+      
+      await supabase.from("merchant_application_files").insert({
+        application_id: applicationId,
+        file_type: "drivers_license",
+        file_name: uploadedFiles.driversLicense.file_name,
+        storage_path: moveError ? tempPath : finalPath,
+        content_type: uploadedFiles.driversLicense.content_type || null,
+        file_size_bytes: uploadedFiles.driversLicense.file_size,
+      });
     }
 
     await clearAbandonedProgress(payload.personal.email.trim());
@@ -200,25 +259,74 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       }
       pdfBase64ForClient = pdfBuffer.toString("base64");
 
-      const fileKeys = [
-        { key: "bank_statements", prefix: "bank-statement" },
-        { key: "void_check", prefix: "void-check" },
-        { key: "drivers_license", prefix: "drivers-license" },
-      ] as const;
+      // Download uploaded files from storage for email attachments
       const allAttachments: { filename: string; content: Buffer }[] = [
         { filename: pdfFilename, content: pdfBuffer },
       ];
-      for (const { key, prefix } of fileKeys) {
-        const entries = formData.getAll(key);
-        for (let i = 0; i < entries.length; i++) {
-          const file = entries[i];
-          if (!(file instanceof File) || file.size === 0) continue;
-          const buf = Buffer.from(await file.arrayBuffer());
-          const ext = file.name.split(".").pop() || "pdf";
-          allAttachments.push({
-            filename: `${prefix}-${i + 1}.${ext}`,
-            content: buf,
-          });
+      
+      // Download bank statements
+      for (let i = 0; i < (uploadedFiles.bankStatements || []).length; i++) {
+        const fileMetadata = uploadedFiles.bankStatements[i];
+        if (fileMetadata && fileMetadata.storage_path) {
+          try {
+            const { data: fileData, error: downloadError } = await supabase.storage
+              .from(BUCKET)
+              .download(fileMetadata.storage_path);
+            
+            if (!downloadError && fileData) {
+              const arrayBuffer = await fileData.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              const ext = fileMetadata.file_name.split(".").pop() || "pdf";
+              allAttachments.push({
+                filename: `bank-statement-${i + 1}.${ext}`,
+                content: buffer,
+              });
+            }
+          } catch (err) {
+            console.error("Error downloading bank statement for email:", err);
+          }
+        }
+      }
+      
+      // Download void check
+      if (uploadedFiles.voidCheck && uploadedFiles.voidCheck.storage_path) {
+        try {
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from(BUCKET)
+            .download(uploadedFiles.voidCheck.storage_path);
+          
+          if (!downloadError && fileData) {
+            const arrayBuffer = await fileData.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const ext = uploadedFiles.voidCheck.file_name.split(".").pop() || "pdf";
+            allAttachments.push({
+              filename: `void-check-1.${ext}`,
+              content: buffer,
+            });
+          }
+        } catch (err) {
+          console.error("Error downloading void check for email:", err);
+        }
+      }
+      
+      // Download driver's license
+      if (uploadedFiles.driversLicense && uploadedFiles.driversLicense.storage_path) {
+        try {
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from(BUCKET)
+            .download(uploadedFiles.driversLicense.storage_path);
+          
+          if (!downloadError && fileData) {
+            const arrayBuffer = await fileData.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const ext = uploadedFiles.driversLicense.file_name.split(".").pop() || "pdf";
+            allAttachments.push({
+              filename: `drivers-license-1.${ext}`,
+              content: buffer,
+            });
+          }
+        } catch (err) {
+          console.error("Error downloading driver's license for email:", err);
         }
       }
 

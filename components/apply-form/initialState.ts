@@ -35,7 +35,7 @@ export const initialFormState: ApplicationFormData = {
     ownershipPercent: "",
   },
   documents: {
-    bankStatements: null,
+    bankStatements: [],
     voidCheck: null,
     driversLicense: null,
   },

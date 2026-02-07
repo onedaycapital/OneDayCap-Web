@@ -99,6 +99,11 @@ async function main() {
       signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : null,
       auditId: row.audit_id ?? null,
     },
+    documents: {
+      bankStatements: [],
+      voidCheck: null,
+      driversLicense: null,
+    },
   };
 
   const classification = row.industry_risk_tier != null && row.paper_type != null
