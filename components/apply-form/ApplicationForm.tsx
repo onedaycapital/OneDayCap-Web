@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { ApplicationFormData, StepId } from "./types";
 import { initialFormState, STEP_SECTIONS } from "./initialState";
@@ -68,6 +68,7 @@ export function ApplicationForm() {
   const [submitting, setSubmitting] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const submitErrorRef = useRef<HTMLDivElement>(null);
   const [lookupDebug, setLookupDebug] = useState<string | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
   const [hadLookupResult, setHadLookupResult] = useState(false);
@@ -88,6 +89,12 @@ export function ApplicationForm() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentStep]);
+
+  useEffect(() => {
+    if (submitError && submitErrorRef.current) {
+      submitErrorRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [submitError]);
 
   // Amplitude: form started (once on mount)
   useEffect(() => {
@@ -326,7 +333,15 @@ export function ApplicationForm() {
         if (formData.documents.driversLicense?.length) {
           fd.append("drivers_license", formData.documents.driversLicense[0]);
         }
-        const result = await submitApplication(fd);
+        let result;
+        try {
+          result = await submitApplication(fd);
+        } catch (actionErr) {
+          const msg = actionErr instanceof Error ? actionErr.message : String(actionErr);
+          trackApplicationForm(ApplicationFormEvents.FormSubmitFailed, { error: msg, step_name: "Documents & Agreement" });
+          setSubmitError(msg || "Submission failed. Please try again or contact subs@onedaycap.com.");
+          return;
+        }
         if (result.success) {
           trackApplicationForm(ApplicationFormEvents.FormSubmitted, { application_id: result.applicationId, step: 5, step_name: "Documents & Agreement" });
           if (result.additionalDetails || result.pdfBase64) {
@@ -496,7 +511,7 @@ export function ApplicationForm() {
               </div>
             )}
             {submitError && (
-              <div className="mt-6 rounded-xl border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900 shadow-sm" role="alert">
+              <div ref={submitErrorRef} className="mt-6 rounded-xl border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900 shadow-sm" role="alert">
                 <p className="font-semibold">Submission failed</p>
                 <p className="mt-2 text-red-800">{submitError}</p>
                 <p className="mt-2 text-xs text-red-700">Check your connection and try again. If this persists, contact subs@onedaycap.com with the message above.</p>
