@@ -56,6 +56,9 @@ export interface SubmitPayload {
     signedAt: string | null;
     auditId: string | null;
   };
+  /** When set, files were uploaded directly to Storage; server copies from pending/uploadId to applicationId */
+  uploadId?: string;
+  uploadedPaths?: { type: "bank_statements" | "void_check" | "drivers_license"; path: string; fileName: string }[];
 }
 
 export type SubmitResult =
@@ -133,39 +136,83 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       })
       .eq("id", applicationId);
 
-    // Upload files: FormData keys are bank_statements (multiple), void_check, drivers_license
-    const fileTypes = [
-      { key: "bank_statements", type: "bank_statements" as const },
-      { key: "void_check", type: "void_check" as const },
-      { key: "drivers_license", type: "drivers_license" as const },
-    ] as const;
+    // Files: either from direct upload (payload.uploadId) or from FormData
+    const useDirectUpload = Boolean(payload.uploadId && payload.uploadedPaths?.length);
 
-    for (const { key, type } of fileTypes) {
-      const entries = formData.getAll(key);
-      for (let i = 0; i < entries.length; i++) {
-        const file = entries[i];
-        if (!(file instanceof File) || file.size === 0) continue;
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storagePath = `${applicationId}/${type}/${safeName}`;
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET)
-          .upload(storagePath, file, {
-            contentType: file.type || "application/octet-stream",
-            upsert: false,
-          });
+    if (useDirectUpload) {
+      // Copy from pending/{uploadId} to {applicationId} and register in DB
+      for (const { type, path: pendingPath, fileName } of payload.uploadedPaths!) {
+        const { data: blob, error: downloadError } = await supabase.storage.from(BUCKET).download(pendingPath);
+        if (downloadError || !blob) {
+          console.error("Storage download error (pending):", downloadError);
+          continue;
+        }
+        const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const finalPath = `${applicationId}/${type}/${safeName}`;
+        const buf = Buffer.from(await blob.arrayBuffer());
+        const { error: uploadError } = await supabase.storage.from(BUCKET).upload(finalPath, buf, {
+          contentType: blob.type || "application/octet-stream",
+          upsert: false,
+        });
         if (uploadError) {
-          console.error("Storage upload error:", uploadError);
-          // Don't fail the whole submit; application is already saved
+          console.error("Storage upload error (final):", uploadError);
           continue;
         }
         await supabase.from("merchant_application_files").insert({
           application_id: applicationId,
           file_type: type,
-          file_name: file.name,
-          storage_path: storagePath,
-          content_type: file.type || null,
-          file_size_bytes: file.size,
+          file_name: fileName,
+          storage_path: finalPath,
+          content_type: blob.type || null,
+          file_size_bytes: buf.length,
         });
+      }
+      // Delete pending folder: list subfolders (type per file), then remove all file paths
+      const { data: topList } = await supabase.storage.from(BUCKET).list(`pending/${payload.uploadId}`);
+      if (topList?.length) {
+        const toRemove: string[] = [];
+        for (const item of topList) {
+          const subPath = `pending/${payload.uploadId}/${item.name}`;
+          const { data: subList } = await supabase.storage.from(BUCKET).list(subPath);
+          if (subList?.length) {
+            for (const f of subList) toRemove.push(`${subPath}/${f.name}`);
+          }
+        }
+        if (toRemove.length) await supabase.storage.from(BUCKET).remove(toRemove);
+      }
+    } else {
+      // Upload from FormData (legacy / small payloads)
+      const fileTypes = [
+        { key: "bank_statements", type: "bank_statements" as const },
+        { key: "void_check", type: "void_check" as const },
+        { key: "drivers_license", type: "drivers_license" as const },
+      ] as const;
+      for (const { key, type } of fileTypes) {
+        const entries = formData.getAll(key);
+        for (let i = 0; i < entries.length; i++) {
+          const file = entries[i];
+          if (!(file instanceof File) || file.size === 0) continue;
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const storagePath = `${applicationId}/${type}/${safeName}`;
+          const { error: uploadError } = await supabase.storage
+            .from(BUCKET)
+            .upload(storagePath, file, {
+              contentType: file.type || "application/octet-stream",
+              upsert: false,
+            });
+          if (uploadError) {
+            console.error("Storage upload error:", uploadError);
+            continue;
+          }
+          await supabase.from("merchant_application_files").insert({
+            application_id: applicationId,
+            file_type: type,
+            file_name: file.name,
+            storage_path: storagePath,
+            content_type: file.type || null,
+            file_size_bytes: file.size,
+          });
+        }
       }
     }
 
@@ -200,25 +247,43 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       }
       pdfBase64ForClient = pdfBuffer.toString("base64");
 
-      const fileKeys = [
-        { key: "bank_statements", prefix: "bank-statement" },
-        { key: "void_check", prefix: "void-check" },
-        { key: "drivers_license", prefix: "drivers-license" },
-      ] as const;
       const allAttachments: { filename: string; content: Buffer }[] = [
         { filename: pdfFilename, content: pdfBuffer },
       ];
-      for (const { key, prefix } of fileKeys) {
-        const entries = formData.getAll(key);
-        for (let i = 0; i < entries.length; i++) {
-          const file = entries[i];
-          if (!(file instanceof File) || file.size === 0) continue;
-          const buf = Buffer.from(await file.arrayBuffer());
-          const ext = file.name.split(".").pop() || "pdf";
-          allAttachments.push({
-            filename: `${prefix}-${i + 1}.${ext}`,
-            content: buf,
-          });
+      if (useDirectUpload && payload.uploadedPaths?.length) {
+        const prefixByType: Record<string, string> = {
+          bank_statements: "bank-statement",
+          void_check: "void-check",
+          drivers_license: "drivers-license",
+        };
+        const indexByType: Record<string, number> = {};
+        for (const { type, path: _p, fileName } of payload.uploadedPaths) {
+          const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const finalPath = `${applicationId}/${type}/${safeName}`;
+          const { data: blob, error } = await supabase.storage.from(BUCKET).download(finalPath);
+          if (error || !blob) continue;
+          const buf = Buffer.from(await blob.arrayBuffer());
+          const ext = fileName.split(".").pop() || "pdf";
+          const prefix = prefixByType[type] ?? "doc";
+          const idx = (indexByType[type] ?? 0) + 1;
+          indexByType[type] = idx;
+          allAttachments.push({ filename: `${prefix}-${idx}.${ext}`, content: buf });
+        }
+      } else {
+        const fileKeys = [
+          { key: "bank_statements", prefix: "bank-statement" },
+          { key: "void_check", prefix: "void-check" },
+          { key: "drivers_license", prefix: "drivers-license" },
+        ] as const;
+        for (const { key, prefix } of fileKeys) {
+          const entries = formData.getAll(key);
+          for (let i = 0; i < entries.length; i++) {
+            const file = entries[i];
+            if (!(file instanceof File) || file.size === 0) continue;
+            const buf = Buffer.from(await file.arrayBuffer());
+            const ext = file.name.split(".").pop() || "pdf";
+            allAttachments.push({ filename: `${prefix}-${i + 1}.${ext}`, content: buf });
+          }
         }
       }
 

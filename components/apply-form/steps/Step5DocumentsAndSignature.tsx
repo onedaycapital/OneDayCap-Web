@@ -51,7 +51,8 @@ export function Step5DocumentsAndSignature({
       <div>
         <h2 className="font-heading text-2xl font-bold text-slate-800">Document Uploads</h2>
         <p className="mt-1 text-slate-600 text-sm">
-          You may upload documents below. Accepted: PDF, JPG, JPEG, GIF, CSV.
+          You may upload documents below. Accepted: PDF, JPG, JPEG, GIF, CSV. Large files are
+          supported and uploaded securely.
         </p>
       </div>
 
