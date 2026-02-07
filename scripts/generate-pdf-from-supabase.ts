@@ -43,7 +43,7 @@ if (!url || !key) {
 }
 
 async function main() {
-  const supabase = createClient(url, key, { auth: { persistSession: false } });
+  const supabase = createClient(url as string, key as string, { auth: { persistSession: false } });
 
   const { data: row, error } = await supabase
     .from("merchant_applications")

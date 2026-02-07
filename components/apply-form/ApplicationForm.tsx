@@ -38,7 +38,14 @@ function toAbandonedPayload(
   creditOwnership: ApplicationFormData["creditOwnership"],
   signature: ApplicationFormData["signature"]
 ) {
-  return buildAbandonedPayload(step, personal, business, financial, creditOwnership, signature);
+  return buildAbandonedPayload(
+    step,
+    personal,
+    business as unknown as Record<string, string>,
+    financial as unknown as Record<string, string>,
+    creditOwnership as unknown as Record<string, string>,
+    signature
+  );
 }
 
 /** Merge overlay onto base, but only where overlay has a non-empty value (so abandoned blanks don't overwrite Staging). */
@@ -178,10 +185,10 @@ export function ApplicationForm() {
             const baseBusiness = { ...formData.business, ...(staging?.business ?? {}) } as Record<string, unknown>;
             const baseFinancial = { ...formData.financial, ...(staging?.financial ?? {}) } as Record<string, unknown>;
             const baseCredit = { ...formData.creditOwnership, ...(staging?.creditOwnership ?? {}) } as Record<string, unknown>;
-            const mergedPersonal = mergeSectionPreferNonEmpty(basePersonal, abandonedPayload.personal as Record<string, unknown>) as ApplicationFormData["personal"];
-            const mergedBusiness = mergeSectionPreferNonEmpty(baseBusiness, abandonedPayload.business as Record<string, unknown>) as ApplicationFormData["business"];
-            const mergedFinancial = mergeSectionPreferNonEmpty(baseFinancial, abandonedPayload.financial as Record<string, unknown>) as ApplicationFormData["financial"];
-            const mergedCredit = mergeSectionPreferNonEmpty(baseCredit, abandonedPayload.creditOwnership as Record<string, unknown>) as ApplicationFormData["creditOwnership"];
+            const mergedPersonal = mergeSectionPreferNonEmpty(basePersonal, abandonedPayload.personal as Record<string, unknown>) as unknown as ApplicationFormData["personal"];
+            const mergedBusiness = mergeSectionPreferNonEmpty(baseBusiness, abandonedPayload.business as Record<string, unknown>) as unknown as ApplicationFormData["business"];
+            const mergedFinancial = mergeSectionPreferNonEmpty(baseFinancial, abandonedPayload.financial as Record<string, unknown>) as unknown as ApplicationFormData["financial"];
+            const mergedCredit = mergeSectionPreferNonEmpty(baseCredit, abandonedPayload.creditOwnership as Record<string, unknown>) as unknown as ApplicationFormData["creditOwnership"];
             setFormData({
               step: stepToRestore as StepId,
               personal: mergedPersonal,
