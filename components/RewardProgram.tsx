@@ -62,8 +62,7 @@ export function RewardProgram() {
           </span>
         </div>
         <p className="text-center text-slate-600 mb-12 max-w-2xl mx-auto text-lg">
-          Fund through OneDay Capital and qualified customers may receive a
-          limited-time appreciation reward based on the total funded amount.*
+          Fund through OneDay Capital and receive a FREE reward based on the total funded amount.*
         </p>
 
         <div className="flex flex-col lg:flex-row lg:flex-nowrap justify-center items-stretch gap-4 mb-14 lg:gap-6">

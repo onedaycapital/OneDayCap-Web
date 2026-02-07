@@ -16,6 +16,7 @@ import {
 import type { SubmitPayload } from "@/app/actions/submit-application";
 import { getIndustryRisk } from "@/lib/industry-risk";
 import type { PaperClassification } from "@/lib/paper-classifier";
+import { LOGO_PNG_BASE64 } from "@/lib/logo-pdf";
 
 /** One row in the Additional Details tile (label + value). */
 export interface AdditionalDetailsRow {
@@ -115,14 +116,21 @@ export async function generateApplicationPdf(
   let yFromTop = MARGIN;
 
   // ---- Header: logo 2x size, title, contact ----
-  const logoWidth = 180; // 2x (was 90)
-  const logoHeight = 56; // 2x (was 28)
+  const logoWidth = 180;
+  const logoHeight = 56;
   let logoBytes: Uint8Array | null = null;
-  if (logoPath && fs.existsSync(logoPath)) {
+  // 1) Embedded logo (always works on Vercel - no fs/fetch)
+  try {
+    logoBytes = new Uint8Array(Buffer.from(LOGO_PNG_BASE64, "base64"));
+  } catch {
+    // skip
+  }
+  // 2) Optional override from disk (e.g. local dev)
+  if (!logoBytes && logoPath && fs.existsSync(logoPath)) {
     try {
       logoBytes = fs.readFileSync(logoPath);
     } catch {
-      // skip
+      // keep embedded
     }
   }
   if (!logoBytes) {
@@ -131,29 +139,7 @@ export async function generateApplicationPdf(
       try {
         logoBytes = fs.readFileSync(localPath);
       } catch {
-        // skip
-      }
-    }
-  }
-  if (!logoBytes) {
-    const bases: string[] = [];
-    if (process.env.VERCEL_URL) {
-      bases.push(`https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "").split("/")[0]}`);
-    }
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.SITE_URL;
-    if (appUrl) {
-      bases.push(appUrl.replace(/\/$/, ""));
-    }
-    for (const base of bases) {
-      try {
-        const res = await fetch(`${base}/images/logo-small.png`, { signal: AbortSignal.timeout(5000) });
-        if (res.ok) {
-          const ab = await res.arrayBuffer();
-          logoBytes = new Uint8Array(ab);
-          break;
-        }
-      } catch {
-        // try next base or skip
+        // keep embedded
       }
     }
   }

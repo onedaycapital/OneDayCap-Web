@@ -12,6 +12,7 @@ import {
   getInternalEmailBody,
 } from "@/lib/email-templates";
 import { computePaperClassification } from "@/lib/paper-classifier";
+import { addWatermarkToPdf, type WatermarkPlacement } from "@/lib/watermark-pdf";
 
 const INTERNAL_EMAIL = "subs@onedaycap.com";
 
@@ -264,9 +265,18 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       const pathForDownload = (storagePath: string) =>
         storagePath.startsWith("temp/") ? storagePath.replace(/^temp\//, `${applicationId}/`) : storagePath;
 
-      const allAttachments: { filename: string; content: Buffer }[] = [
-        { filename: pdfFilename, content: pdfBuffer },
-      ];
+      // Attachments for internal email (subs@onedaycap.com). Watermark PDFs; stored files stay original.
+      const internalAttachments: { filename: string; content: Buffer }[] = [];
+      const addInternal = async (
+        filename: string,
+        buffer: Buffer,
+        placement: WatermarkPlacement
+      ) => {
+        const content = await addWatermarkToPdf(buffer, placement);
+        internalAttachments.push({ filename, content });
+      };
+
+      await addInternal(pdfFilename, pdfBuffer, "application-form-terms");
 
       for (let i = 0; i < (uploadedFiles.bankStatements || []).length; i++) {
         const fileMetadata = uploadedFiles.bankStatements[i];
@@ -277,7 +287,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
             if (!downloadError && fileData) {
               const buffer = Buffer.from(await fileData.arrayBuffer());
               const ext = fileMetadata.file_name.split(".").pop() || "pdf";
-              allAttachments.push({ filename: `bank-statement-${i + 1}.${ext}`, content: buffer });
+              await addInternal(`bank-statement-${i + 1}.${ext}`, buffer, "page1-top30");
             } else if (downloadError) {
               console.error(LOG_PREFIX, "email attachment download failed (bank):", path, downloadError);
             }
@@ -294,7 +304,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
           if (!downloadError && fileData) {
             const buffer = Buffer.from(await fileData.arrayBuffer());
             const ext = uploadedFiles.voidCheck.file_name.split(".").pop() || "pdf";
-            allAttachments.push({ filename: `void-check-1.${ext}`, content: buffer });
+            await addInternal(`void-check-1.${ext}`, buffer, "top-half");
           } else if (downloadError) {
             console.error(LOG_PREFIX, "email attachment download failed (void):", path, downloadError);
           }
@@ -310,7 +320,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
           if (!downloadError && fileData) {
             const buffer = Buffer.from(await fileData.arrayBuffer());
             const ext = uploadedFiles.driversLicense.file_name.split(".").pop() || "pdf";
-            allAttachments.push({ filename: `drivers-license-1.${ext}`, content: buffer });
+            await addInternal(`drivers-license-1.${ext}`, buffer, "top-half");
           } else if (downloadError) {
             console.error(LOG_PREFIX, "email attachment download failed (dl):", path, downloadError);
           }
@@ -340,12 +350,12 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
         attachments: [{ filename: pdfFilename, content: pdfBuffer }],
       });
       console.log(LOG_PREFIX, "sending email to internal");
-      // (b) Email to me (subs@onedaycap.com): notification + PDF + all uploaded files
+      // (b) Email to me (subs@onedaycap.com): notification + watermarked PDF + all uploaded files (watermarked)
       await sendEmail({
         to: INTERNAL_EMAIL,
         subject: getInternalEmailSubject(templateVars),
         html: toHtml(getInternalEmailBody(templateVars)),
-        attachments: allAttachments,
+        attachments: internalAttachments,
       });
     } catch (emailErr) {
       console.error(LOG_PREFIX, "Application PDF/email error (application was saved):", emailErr);

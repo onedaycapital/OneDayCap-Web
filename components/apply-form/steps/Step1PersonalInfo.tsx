@@ -12,7 +12,7 @@ export function Step1PersonalInfo({ data, onChange }: Props) {
     <div className="space-y-6">
       <h2 className="font-heading text-2xl font-bold text-slate-800">Get Started</h2>
       <p className="text-slate-600 text-sm">
-        Enter your email address. If we have your details on file, we&apos;ll prefill the rest of the form so you can review and complete any missing information.
+        Enter your email address. If we or our network of funders have your profile on file, we&apos;ll prefill the form so you can review and complete any missing information.
       </p>
       <div className="max-w-md">
         <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
