@@ -135,16 +135,26 @@ export async function generateApplicationPdf(
       }
     }
   }
-  if (!logoBytes && process.env.VERCEL_URL) {
-    try {
-      const base = `https://${process.env.VERCEL_URL}`;
-      const res = await fetch(`${base}/images/logo-small.png`);
-      if (res.ok) {
-        const ab = await res.arrayBuffer();
-        logoBytes = new Uint8Array(ab);
+  if (!logoBytes) {
+    const bases: string[] = [];
+    if (process.env.VERCEL_URL) {
+      bases.push(`https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "").split("/")[0]}`);
+    }
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.SITE_URL;
+    if (appUrl) {
+      bases.push(appUrl.replace(/\/$/, ""));
+    }
+    for (const base of bases) {
+      try {
+        const res = await fetch(`${base}/images/logo-small.png`, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const ab = await res.arrayBuffer();
+          logoBytes = new Uint8Array(ab);
+          break;
+        }
+      } catch {
+        // try next base or skip
       }
-    } catch {
-      // skip
     }
   }
   if (logoBytes) {

@@ -10,7 +10,6 @@ import { Step3FinancialFunding } from "./steps/Step3FinancialFunding";
 import { Step4PersonalCreditOwnership } from "./steps/Step4PersonalCreditOwnership";
 import { Step5DocumentsAndSignature } from "./steps/Step5DocumentsAndSignature";
 import { submitApplication } from "@/app/actions/submit-application";
-import { createUploadSession, type DocumentFileType } from "@/app/actions/create-upload-urls";
 import { lookupMerchantByEmail } from "@/app/actions/lookup-merchant";
 import { getAbandonedProgress, upsertAbandonedProgress } from "@/app/actions/abandoned-progress";
 import { buildAbandonedPayload } from "@/lib/abandoned-payload";
@@ -30,33 +29,6 @@ import {
 
 const TOTAL_STEPS = 5;
 const AUTOSAVE_DEBOUNCE_MS = 1800;
-
-/** Build ordered list of file slots (type + fileName) and matching File array for direct upload. */
-function buildFileSlots(documents: ApplicationFormData["documents"]): {
-  slots: { type: DocumentFileType; fileName: string }[];
-  files: File[];
-} {
-  const slots: { type: DocumentFileType; fileName: string }[] = [];
-  const files: File[] = [];
-  if (documents.bankStatements) {
-    for (let i = 0; i < documents.bankStatements.length; i++) {
-      const f = documents.bankStatements[i];
-      if (f instanceof File && f.size > 0) {
-        slots.push({ type: "bank_statements", fileName: f.name });
-        files.push(f);
-      }
-    }
-  }
-  if (documents.voidCheck?.[0] instanceof File && documents.voidCheck[0].size > 0) {
-    slots.push({ type: "void_check", fileName: documents.voidCheck[0].name });
-    files.push(documents.voidCheck[0]);
-  }
-  if (documents.driversLicense?.[0] instanceof File && documents.driversLicense[0].size > 0) {
-    slots.push({ type: "drivers_license", fileName: documents.driversLicense[0].name });
-    files.push(documents.driversLicense[0]);
-  }
-  return { slots, files };
-}
 
 function toAbandonedPayload(
   step: number,
@@ -339,62 +311,19 @@ export function ApplicationForm() {
         return;
       }
       if (submitting) return;
-
-      const { slots, files } = buildFileSlots(formData.documents);
-      const useApiUpload = files.length > 0;
-      if (useApiUpload) {
-        const maxPerFile = 4 * 1024 * 1024;
-        const tooBig = files.find((f) => f.size > maxPerFile);
-        if (tooBig) {
-          setSubmitError(
-            `"${tooBig.name}" is over 4 MB. Please use a smaller file or split documents.`
-          );
-          return;
-        }
-      }
-
       setSubmitting(true);
       try {
-        let payload: Record<string, unknown> = {
+        const payload = {
           personal: formData.personal,
           business: formData.business,
           financial: formData.financial,
           creditOwnership: formData.creditOwnership,
           signature: formData.signature,
+          documents: formData.documents, // Include uploaded file metadata
         };
-
         const fd = new FormData();
-
-        if (useApiUpload && slots.length > 0) {
-          const session = await createUploadSession(slots);
-          if ("error" in session) {
-            setSubmitError(session.error || "Failed to prepare upload.");
-            return;
-          }
-          for (let i = 0; i < session.uploads.length; i++) {
-            const slot = session.uploads[i];
-            const file = files[i];
-            if (!file) continue;
-            const uploadFd = new FormData();
-            uploadFd.append("file", file);
-            uploadFd.append("uploadId", session.uploadId);
-            uploadFd.append("type", slot.type);
-            uploadFd.append("fileName", slot.fileName);
-            const res = await fetch("/api/upload-application-file", {
-              method: "POST",
-              body: uploadFd,
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              setSubmitError((data.error as string) || `File upload failed (${res.status}). Please try again.`);
-              return;
-            }
-          }
-          payload.uploadId = session.uploadId;
-          payload.uploadedPaths = session.uploads.map((u) => ({ type: u.type, path: u.path, fileName: u.fileName }));
-        }
-
         fd.append("payload", JSON.stringify(payload));
+        
         let result;
         try {
           result = await submitApplication(fd);
