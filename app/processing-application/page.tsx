@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ProcessingFlowChart } from "@/components/ProcessingFlowChart";
+import { ProcessingApplicationSummary } from "@/components/ProcessingApplicationSummary";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -14,31 +15,31 @@ export default function ProcessingApplicationPage() {
   return (
     <>
       <Header />
-      <main className="min-h-screen pt-24 md:pt-28 pb-20 px-6 bg-[var(--background)]">
-        {/* Hero section - constrained width, extra top margin to clear fixed header */}
-        <div className="max-w-[22rem] mx-auto mt-6 mb-12">
-          <div className="relative overflow-hidden bg-slate-900 rounded-2xl px-4 py-7 sm:py-10">
-            <div
-              className="absolute inset-0 opacity-20"
-              style={{
-                backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.4) 1px, transparent 1px)",
-                backgroundSize: "24px 24px",
-              }}
-              aria-hidden
-            />
-            <div className="relative text-center z-10">
-              <h1 className="font-heading text-xl sm:text-2xl md:text-3xl font-bold text-white tracking-tight">
+      <main className="min-h-screen pt-24 md:pt-28 pb-20 px-4 sm:px-6 bg-[var(--background)]">
+        {/* Three tiles above the hero: Status, PDF (if available), Additional Details (if available) */}
+        <section className="max-w-6xl mx-auto mt-4 sm:mt-6 mb-6 sm:mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {/* Tile 1: Processing Your Application (always shown) */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-[var(--brand-blue)]/40 transition-colors">
+              <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</h2>
+              <p className="mt-1 font-heading text-base sm:text-lg font-bold text-[var(--brand-black)]">
                 Processing Your Application
-              </h1>
-              <p className="mt-2 sm:mt-3 text-sm text-slate-200">
+              </p>
+              <p className="mt-0.5 text-xs text-slate-600">
                 We&apos;re working with our funder network to find the best options for you.
               </p>
             </div>
-          </div>
-        </div>
 
-        {/* Flow chart */}
-        <section className="max-w-6xl mx-auto">
+            {/* Tiles 2 & 3: Loan Application PDF File + Additional Details (shown after submit; fragment children become grid cells) */}
+            <ProcessingApplicationSummary />
+          </div>
+        </section>
+
+        {/* Hero: Workflow (flow chart) */}
+        <section className="max-w-6xl mx-auto mt-8 rounded-2xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-soft">
+          <h2 className="font-heading text-lg sm:text-xl font-bold text-[var(--brand-black)] mb-6">
+            Your application progress
+          </h2>
           <ProcessingFlowChart />
         </section>
 

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CTAButton } from "./CTAButton";
 
@@ -9,6 +10,8 @@ const SCROLL_THRESHOLD = 100;
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
+  const hideApplyCta = pathname === "/apply" || pathname === "/application" || pathname === "/processing-application";
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > SCROLL_THRESHOLD);
@@ -30,22 +33,23 @@ export function Header() {
           alt="OneDay Capital"
           width={scrolled ? 100 : 220}
           height={scrolled ? 32 : 56}
-          className={`h-auto transition-all duration-300 ${scrolled ? "w-14 md:w-[100px]" : "w-20 md:w-[220px]"}`}
+          className={`h-auto object-contain transition-all duration-300 ${scrolled ? "w-14 md:w-[100px]" : "w-20 md:w-[220px]"}`}
           priority
         />
       </Link>
-      <div className={`shrink-0 ${scrolled ? "scale-105" : ""}`}>
-        <CTAButton
-          href="https://submit.jotform.com/260232877555059"
-          variant="primary"
-          size={scrolled ? "md" : "lg"}
-          showArrowOnHover
-          openInNewTab
-          className="!px-3 !py-2 !text-xs md:!px-6 md:!py-3 md:!text-base lg:!px-8 lg:!py-4 lg:!text-lg"
-        >
-          Apply Now
-        </CTAButton>
-      </div>
+      {!hideApplyCta && (
+        <div className={`shrink-0 ${scrolled ? "scale-105" : ""}`}>
+          <CTAButton
+            href="/application"
+            variant="primary"
+            size={scrolled ? "md" : "lg"}
+            showArrowOnHover
+            className="!px-3 !py-2 !text-xs md:!px-6 md:!py-3 md:!text-base lg:!px-8 lg:!py-4 lg:!text-lg"
+          >
+            Apply Now
+          </CTAButton>
+        </div>
+      )}
     </header>
   );
 }

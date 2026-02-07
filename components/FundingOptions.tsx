@@ -127,11 +127,10 @@ export function FundingOptions() {
         </div>
 
         <CTAButton
-          href="https://submit.jotform.com/260232877555059"
+          href="/application"
           variant="primary"
           size="lg"
           showArrowOnHover
-          openInNewTab
           className="!bg-emerald-500 hover:!bg-emerald-600 !shadow-emerald-500/30 hover:!shadow-emerald-500/40"
         >
           Apply Now

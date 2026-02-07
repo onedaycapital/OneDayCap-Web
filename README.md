@@ -18,15 +18,6 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-**If you get `EPERM: operation not permitted` on port 3000** (e.g. in Cursor’s terminal), run the same commands from your **system terminal** (Terminal.app or iTerm):
-
-```bash
-cd "/Users/Sree/projects/OneDayCap Website"
-npm run dev
-```
-
-Or run the helper script: `./start-dev.sh` (after `chmod +x start-dev.sh` once).
-
 ## Deploy with GitHub + Vercel
 
 ### 1. Create a GitHub repo

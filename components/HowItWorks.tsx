@@ -84,7 +84,7 @@ export function HowItWorks() {
         </div>
 
         <div className="mt-14 text-center">
-          <CTAButton href="https://submit.jotform.com/260232877555059" variant="primary" size="lg" showArrowOnHover openInNewTab>
+          <CTAButton href="/application" variant="primary" size="lg" showArrowOnHover>
             Apply Now
           </CTAButton>
         </div>

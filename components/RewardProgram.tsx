@@ -90,7 +90,7 @@ export function RewardProgram() {
         </div>
 
         <div className="text-center space-y-2">
-          <CTAButton href="https://submit.jotform.com/260232877555059" variant="primary" size="lg" showArrowOnHover openInNewTab>
+          <CTAButton href="/application" variant="primary" size="lg" showArrowOnHover>
             Apply Now
           </CTAButton>
           <p className="text-sm text-slate-500 font-medium">Takes just minutes.</p>

@@ -40,7 +40,7 @@ export function Hero() {
           {TYPE_LINE}
         </p>
         <div className="pt-2 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-          <CTAButton href="https://submit.jotform.com/260232877555059" variant="primary" size="lg" showArrowOnHover openInNewTab>
+          <CTAButton href="/application" variant="primary" size="lg" showArrowOnHover>
             Apply Now
           </CTAButton>
           <span className="text-slate-400 max-sm:hidden" aria-hidden>·</span>

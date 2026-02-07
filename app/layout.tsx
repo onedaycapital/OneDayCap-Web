@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { CampaignRidTracker } from "@/components/CampaignRidTracker";
 
 export const metadata: Metadata = {
   title: "OneDay Capital | Capital. In One Day.",
@@ -25,7 +26,10 @@ export default function RootLayout({
         <script src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.25.0-min.js.gz"></script>
         <script dangerouslySetInnerHTML={{__html: `window.amplitude.add(window.sessionReplay.plugin({sampleRate: 1}));window.amplitude.init('17dea7f302865cf69e3fee139aa1885c', {"autocapture":{"elementInteractions":true}});`}} />
       </head>
-      <body className="antialiased font-sans">{children}</body>
+      <body className="antialiased font-sans">
+        <CampaignRidTracker />
+        {children}
+      </body>
     </html>
   );
 }

@@ -22,7 +22,7 @@ export function FinalCTA() {
         <p className="text-slate-300 text-lg">
           See how much funding your business may qualify for in minutes.
         </p>
-        <CTAButton href="https://submit.jotform.com/260232877555059" variant="primary" size="lg" showArrowOnHover openInNewTab>
+        <CTAButton href="/application" variant="primary" size="lg" showArrowOnHover>
           Apply Now
         </CTAButton>
       </div>
