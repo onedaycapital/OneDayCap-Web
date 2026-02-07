@@ -41,10 +41,18 @@ export interface PersonalCreditOwnership {
   ownershipPercent: string;
 }
 
+export interface UploadedFileMetadata {
+  storage_path: string;
+  file_name: string;
+  file_size: number;
+  content_type: string;
+  uploaded_at: string;
+}
+
 export interface DocumentUploads {
-  bankStatements: FileList | null;
-  voidCheck: FileList | null;
-  driversLicense: FileList | null;
+  bankStatements: UploadedFileMetadata[];
+  voidCheck: UploadedFileMetadata | null;
+  driversLicense: UploadedFileMetadata | null;
 }
 
 export interface SignatureAudit {

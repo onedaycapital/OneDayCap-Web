@@ -395,7 +395,6 @@ export function ApplicationForm() {
         }
 
         fd.append("payload", JSON.stringify(payload));
-
         let result;
         try {
           result = await submitApplication(fd);

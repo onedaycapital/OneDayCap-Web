@@ -17,7 +17,7 @@ const INTERNAL_EMAIL = "subs@onedaycap.com";
 
 const BUCKET = "merchant-documents";
 
-/** Payload from the form (JSON); documents are omitted, files sent separately in FormData */
+/** Payload from the form (JSON); documents omitted, files via uploadId or FormData */
 export interface SubmitPayload {
   personal: {
     firstName: string;
@@ -56,7 +56,7 @@ export interface SubmitPayload {
     signedAt: string | null;
     auditId: string | null;
   };
-  /** When set, files were uploaded directly to Storage; server copies from pending/uploadId to applicationId */
+  /** When set, files were uploaded via API route; server copies from pending/uploadId to applicationId */
   uploadId?: string;
   uploadedPaths?: { type: "bank_statements" | "void_check" | "drivers_license"; path: string; fileName: string }[];
 }
@@ -136,7 +136,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       })
       .eq("id", applicationId);
 
-    // Files: either from direct upload (payload.uploadId) or from FormData
+    // Files: either from API route upload (payload.uploadId) or from FormData
     const useDirectUpload = Boolean(payload.uploadId && payload.uploadedPaths?.length);
 
     if (useDirectUpload) {
