@@ -245,7 +245,10 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       // Do not fail the submit; application is already in DB
     }
 
-    return { success: true, applicationId, pdfBase64: pdfBase64ForClient, additionalDetails };
+    // Don't return pdfBase64 in production to avoid Server Action response size limits (Vercel ~4.5MB).
+    // User gets the PDF via email; processing page shows additionalDetails when present.
+    const returnPdf = process.env.NODE_ENV !== "production" ? pdfBase64ForClient : undefined;
+    return { success: true, applicationId, pdfBase64: returnPdf, additionalDetails };
   } catch (err) {
     console.error("submitApplication error:", err);
     const message = err instanceof Error ? err.message : "An unexpected error occurred.";

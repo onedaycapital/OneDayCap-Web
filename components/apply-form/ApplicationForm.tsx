@@ -329,7 +329,7 @@ export function ApplicationForm() {
         const result = await submitApplication(fd);
         if (result.success) {
           trackApplicationForm(ApplicationFormEvents.FormSubmitted, { application_id: result.applicationId, step: 5, step_name: "Documents & Agreement" });
-          if (result.pdfBase64 || result.additionalDetails) {
+          if (result.additionalDetails || result.pdfBase64) {
             const safeName =
               (formData.business.businessName || "Application").replace(/[^a-zA-Z0-9\s.-]/g, "").trim() || "Application";
             const filename = `${safeName}_OneDayCap_Application.pdf`;
@@ -496,8 +496,10 @@ export function ApplicationForm() {
               </div>
             )}
             {submitError && (
-              <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
-                {submitError}
+              <div className="mt-6 rounded-xl border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-900 shadow-sm" role="alert">
+                <p className="font-semibold">Submission failed</p>
+                <p className="mt-2 text-red-800">{submitError}</p>
+                <p className="mt-2 text-xs text-red-700">Check your connection and try again. If this persists, contact subs@onedaycap.com with the message above.</p>
               </div>
             )}
             <form onSubmit={handleSubmit} className="mt-8">
