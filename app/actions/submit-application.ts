@@ -62,13 +62,18 @@ export type SubmitResult =
   | { success: true; applicationId: string; pdfBase64?: string; additionalDetails?: AdditionalDetailsRow[] }
   | { success: false; error: string };
 
+const LOG_PREFIX = "[submit]";
+
 export async function submitApplication(formData: FormData): Promise<SubmitResult> {
   try {
+    console.log(LOG_PREFIX, "start");
     const payloadRaw = formData.get("payload");
     if (typeof payloadRaw !== "string") {
+      console.log(LOG_PREFIX, "missing payload");
       return { success: false, error: "Missing form payload." };
     }
     const payload: SubmitPayload = JSON.parse(payloadRaw);
+    console.log(LOG_PREFIX, "payload parsed, business:", payload.business?.businessName || "");
 
     const row = {
       first_name: payload.personal.firstName,
@@ -100,7 +105,9 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       audit_id: payload.signature.auditId || null,
     };
 
+    console.log(LOG_PREFIX, "getting Supabase client");
     const supabase = getSupabaseServer();
+    console.log(LOG_PREFIX, "inserting into merchant_applications");
     const { data: app, error: insertError } = await supabase
       .from("merchant_applications")
       .insert(row)
@@ -108,11 +115,12 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
       .single();
 
     if (insertError) {
-      console.error("Supabase insert error:", insertError);
+      console.error(LOG_PREFIX, "Supabase insert error:", insertError);
       return { success: false, error: insertError.message || "Failed to save application." };
     }
 
     const applicationId = app.id as string;
+    console.log(LOG_PREFIX, "insert ok, applicationId:", applicationId);
 
     // Paper classification (Industry Risk Tier + Paper Type) and update row
     const classification = computePaperClassification(payload);
@@ -167,6 +175,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
     const additionalDetails = buildAdditionalDetailsRows(payload, classification);
     // Generate PDF (data excluding phone/email in output), save to Supabase, and email to subs@onedaycap.com
     try {
+      console.log(LOG_PREFIX, "generating PDF");
       const pdfBuffer = await generateApplicationPdf(payload, undefined, classification);
       const pdfFilename = applicationPdfFilename(payload.business.businessName);
       const safePdfName = pdfFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -224,6 +233,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
 
       const toHtml = (text: string) => text.replace(/\n/g, "<br>\n");
 
+      console.log(LOG_PREFIX, "sending email to merchant");
       // (a) Email to Merchant: confirmation + application PDF only; cc subs@onedaycap.com
       await sendEmail({
         to: templateVars.merchantEmail,
@@ -232,7 +242,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
         html: toHtml(getMerchantEmailBody(templateVars)),
         attachments: [{ filename: pdfFilename, content: pdfBuffer }],
       });
-
+      console.log(LOG_PREFIX, "sending email to internal");
       // (b) Email to me (subs@onedaycap.com): notification + PDF + all uploaded files
       await sendEmail({
         to: INTERNAL_EMAIL,
@@ -241,16 +251,17 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
         attachments: allAttachments,
       });
     } catch (emailErr) {
-      console.error("Application PDF/email error (application was saved):", emailErr);
+      console.error(LOG_PREFIX, "Application PDF/email error (application was saved):", emailErr);
       // Do not fail the submit; application is already in DB
     }
 
+    console.log(LOG_PREFIX, "returning success");
     // Don't return pdfBase64 in production to avoid Server Action response size limits (Vercel ~4.5MB).
     // User gets the PDF via email; processing page shows additionalDetails when present.
     const returnPdf = process.env.NODE_ENV !== "production" ? pdfBase64ForClient : undefined;
     return { success: true, applicationId, pdfBase64: returnPdf, additionalDetails };
   } catch (err) {
-    console.error("submitApplication error:", err);
+    console.error(LOG_PREFIX, "submitApplication error:", err);
     const message = err instanceof Error ? err.message : "An unexpected error occurred.";
     return { success: false, error: message };
   }
