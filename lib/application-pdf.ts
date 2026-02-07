@@ -115,13 +115,40 @@ export async function generateApplicationPdf(
   let yFromTop = MARGIN;
 
   // ---- Header: logo 2x size, title, contact ----
-  const logoPathResolved =
-    logoPath || path.join(process.cwd(), "public", "images", "logo-small.png");
   const logoWidth = 180; // 2x (was 90)
   const logoHeight = 56; // 2x (was 28)
-  if (fs.existsSync(logoPathResolved)) {
+  let logoBytes: Uint8Array | null = null;
+  if (logoPath && fs.existsSync(logoPath)) {
     try {
-      const logoBytes = fs.readFileSync(logoPathResolved);
+      logoBytes = fs.readFileSync(logoPath);
+    } catch {
+      // skip
+    }
+  }
+  if (!logoBytes) {
+    const localPath = path.join(process.cwd(), "public", "images", "logo-small.png");
+    if (fs.existsSync(localPath)) {
+      try {
+        logoBytes = fs.readFileSync(localPath);
+      } catch {
+        // skip
+      }
+    }
+  }
+  if (!logoBytes && process.env.VERCEL_URL) {
+    try {
+      const base = `https://${process.env.VERCEL_URL}`;
+      const res = await fetch(`${base}/images/logo-small.png`);
+      if (res.ok) {
+        const ab = await res.arrayBuffer();
+        logoBytes = new Uint8Array(ab);
+      }
+    } catch {
+      // skip
+    }
+  }
+  if (logoBytes) {
+    try {
       const logoImage = await doc.embedPng(logoBytes);
       const logoDims = logoImage.scale(logoWidth / logoImage.width);
       const h = Math.min(logoHeight, logoDims.height);

@@ -14,7 +14,7 @@ export interface CreateUploadUrlsResult {
 }
 
 function safeFileName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_").trim() || "file";
 }
 
 /**

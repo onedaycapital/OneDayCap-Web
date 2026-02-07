@@ -147,7 +147,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
           console.error("Storage download error (pending):", downloadError);
           continue;
         }
-        const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").trim() || "file";
         const finalPath = `${applicationId}/${type}/${safeName}`;
         const buf = Buffer.from(await blob.arrayBuffer());
         const { error: uploadError } = await supabase.storage.from(BUCKET).upload(finalPath, buf, {
@@ -258,10 +258,13 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
         };
         const indexByType: Record<string, number> = {};
         for (const { type, path: _p, fileName } of payload.uploadedPaths) {
-          const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").trim() || "file";
           const finalPath = `${applicationId}/${type}/${safeName}`;
           const { data: blob, error } = await supabase.storage.from(BUCKET).download(finalPath);
-          if (error || !blob) continue;
+          if (error || !blob) {
+            console.error(LOG_PREFIX, "email attachment download failed:", finalPath, error);
+            continue;
+          }
           const buf = Buffer.from(await blob.arrayBuffer());
           const ext = fileName.split(".").pop() || "pdf";
           const prefix = prefixByType[type] ?? "doc";
