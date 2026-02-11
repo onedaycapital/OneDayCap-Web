@@ -77,7 +77,8 @@ export function ApplicationForm() {
   const [restoredFromAbandoned, setRestoredFromAbandoned] = useState(false);
   const currentStep = formData.step;
 
-  // Prefill email when user came from a campaign link that included email (?rid=...&email=... or &e=...)
+  // Prefill email when user came from a campaign link that included email (?rid=...&email=... or &e=...).
+  // Also send apply_landing so we create/update application_sessions immediately — eligible for 30m nudge even if they leave before step_view fires.
   useEffect(() => {
     const campaignEmail = getCampaignEmail();
     if (campaignEmail) {
@@ -85,6 +86,7 @@ export function ApplicationForm() {
         ...prev,
         personal: { ...prev.personal, email: campaignEmail },
       }));
+      sendSessionEvent({ email: campaignEmail, event: "apply_landing", step: 1 });
     }
   }, []);
 

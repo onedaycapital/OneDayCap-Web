@@ -3,7 +3,7 @@
  * Call from ApplicationForm at step view, step complete, and submit (when email is present).
  */
 
-export type SessionEventType = "step_view" | "step_complete" | "submit";
+export type SessionEventType = "apply_landing" | "step_view" | "step_complete" | "submit";
 
 export async function sendSessionEvent(params: {
   email: string;

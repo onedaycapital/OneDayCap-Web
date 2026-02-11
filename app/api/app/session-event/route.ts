@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as Body;
     const event = body?.event;
     const step = typeof body?.step === "number" ? body.step : undefined;
-    if (!event || !["step_view", "step_complete", "submit"].includes(event) || step == null || step < 1 || step > 5) {
+    if (!event || !["apply_landing", "step_view", "step_complete", "submit"].includes(event) || step == null || step < 1 || step > 5) {
       log.warn(LOG_SCOPE.API_SESSION_EVENT, "Invalid event or step", { event, step });
       return NextResponse.json({ error: "Invalid event or step." }, { status: 400 });
     }

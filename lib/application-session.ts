@@ -1,6 +1,10 @@
 /**
  * Application sessions: source of truth for abandonment nudges, resume links, 15-day follow-up.
  * Amplitude is used for analytics only; this drives email triggers.
+ *
+ * Two user sources feed into the same 30min nudge; the difference is when we create the session (and thus when the 30min window starts):
+ * - Email campaigns: user lands with ?rid= (email in URL). We send apply_landing when they hit the apply page → session created → 30min runs from apply-land time.
+ * - Web search / organic: no email until they enter it in step 1. We send step_view when they view step 1 with email → session created → 30min runs from first-email time.
  */
 
 import { getSupabaseServer } from "@/lib/supabase-server";
@@ -8,7 +12,7 @@ import { log, LOG_SCOPE } from "@/lib/log";
 
 const TABLE = "application_sessions";
 
-export type SessionEvent = "step_view" | "step_complete" | "submit";
+export type SessionEvent = "apply_landing" | "step_view" | "step_complete" | "submit";
 
 export interface SessionEventPayload {
   email?: string;
