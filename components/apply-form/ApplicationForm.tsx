@@ -202,16 +202,16 @@ export function ApplicationForm() {
           ]);
 
           const hasAbandoned = abandoned.found;
+          const hasMeaningfulAbandoned = hasAbandoned && abandoned.lastStep >= 2;
           const hasStaging = stagingResult.found;
 
-          if (hasAbandoned) {
+          // Only show "Welcome back" when we're restoring progress from step 2+ (not from step-1-only autosave or first-time click)
+          if (hasMeaningfulAbandoned) {
             setAnalyticsUserEmail(email);
-            // When they click Next on step 1, always go to at least step 2 (abandoned.lastStep can be 1 from autosave)
-            const stepToRestore = abandoned.lastStep <= 1 ? nextStep : abandoned.lastStep;
+            const stepToRestore = abandoned.lastStep;
             trackApplicationForm(ApplicationFormEvents.RestoredFromAbandoned, { restored_to_step: stepToRestore, previous_last_step: abandoned.lastStep });
             setRestoredFromAbandoned(true);
             setHadLookupResult(hasStaging);
-            // Staging as base; overlay abandoned only where abandoned has a value (so blanks in abandoned don't wipe Staging)
             const abandonedPayload = abandoned.payload;
             const staging = hasStaging ? stagingResult : null;
             const basePersonal = { ...formData.personal, ...(staging?.personal ?? {}) } as Record<string, unknown>;
@@ -231,13 +231,21 @@ export function ApplicationForm() {
               documents: initialFormState.documents,
               signature: abandonedPayload.signature,
             });
-            if (abandoned.lastStep <= 1) {
-              await upsertAbandonedProgress(
-                email,
-                stepToRestore,
-                toAbandonedPayload(stepToRestore, mergedPersonal, mergedBusiness, mergedFinancial, mergedCredit, abandonedPayload.signature)
-              );
-            }
+            setLookingUp(false);
+            return;
+          }
+
+          // Has abandoned but only step 1 (e.g. autosave from this session): advance to step 2 without "Welcome back"
+          if (hasAbandoned && abandoned.lastStep <= 1) {
+            setAnalyticsUserEmail(email);
+            sendSessionEvent({ email, event: "step_complete", step: nextStep });
+            trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email", lookup_source: "abandoned_step1_only" });
+            await upsertAbandonedProgress(
+              email,
+              nextStep,
+              toAbandonedPayload(nextStep, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature)
+            );
+            setStep(nextStep);
             setLookingUp(false);
             return;
           }
