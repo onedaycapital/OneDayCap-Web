@@ -1,6 +1,6 @@
 # Staging table lookup (application form prefill)
 
-When a user enters their email on Step 1 and clicks Next, the app looks up that email in your **Staging** table (in the same Supabase project). If a row matches, the form is prefilled with that merchant’s data.
+When a user enters their email on Step 1 and clicks Next, the app looks up that email in your **Staging** table in the **Merchant DB** Supabase project. If a row matches, the form is prefilled with that merchant’s data.
 
 ## Recommended: use the RPC (99% consistency)
 
@@ -11,8 +11,8 @@ The app tries **two paths**:
 
 **To get 99% consistent lookups:**
 
-1. Create the Staging table with the standard schema: run **`docs/supabase-staging.sql`** in the Supabase SQL Editor.
-2. Create the lookup function: run **`docs/supabase-staging-lookup-rpc.sql`** in the Supabase SQL Editor.
+1. Create the Staging table with the standard schema: run **`docs/supabase-staging.sql`** in **Merchant DB** → SQL Editor.
+2. Create the lookup function: run **`docs/supabase-staging-lookup-rpc.sql`** in **Merchant DB** → SQL Editor.
 3. Ensure at least one of the email columns (e.g. **Email 1**) contains the test email (case-insensitive match).
 
 After that, the app will use the RPC and prefilling will be reliable. If you use a different table/schema, the client fallback will still run but may miss rows if column names don’t match.
@@ -52,8 +52,8 @@ SSN is never read from Staging.
 2. **Check server logs**  
    Run `npm run dev` and watch the terminal. Look for `Staging lookup [tablename] (column): ...` to see which table/column was tried and any error.
 
-3. **Confirm table and columns in Supabase**  
-   In Supabase → Table Editor, open your Staging table and verify:
+3. **Confirm table and columns in Merchant DB**  
+   In Merchant DB → Table Editor, open your Staging table and verify:
    - The table exists and is in the `public` schema.
    - At least one of the email columns (e.g. “Email 1”) exists and contains the test email.
    - Column names match the list above (spaces and case are OK; we normalize).

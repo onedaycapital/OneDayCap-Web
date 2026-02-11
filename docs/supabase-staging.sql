@@ -1,6 +1,7 @@
 -- =============================================================================
 -- Staging table – for application form lookup-by-email prefill
--- Run this in the Supabase SQL Editor if you need to create the table.
+-- Supabase project: Merchant DB
+-- Run this in Merchant DB → SQL Editor if you need to create the table.
 -- The app matches user email against Email 1–6 and Owner 2 Email 1–5, then
 -- prefills the form from the columns listed below.
 -- =============================================================================

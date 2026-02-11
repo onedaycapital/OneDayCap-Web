@@ -84,6 +84,23 @@ export function setAnalyticsUserId(userId: string): void {
   }
 }
 
+/** Set Amplitude user id to email and set user property "email". Call at step 1 when we have email. */
+export function setAnalyticsUserEmail(email: string): void {
+  const e = email?.trim();
+  if (!e) return;
+  try {
+    AMPLITUDE?.setUserId(e);
+    const Identify = AMPLITUDE?.Identify;
+    if (Identify && typeof AMPLITUDE?.identify === "function") {
+      const identify = new (Identify as new () => { set: (k: string, v: unknown) => unknown })();
+      identify.set("email", e);
+      AMPLITUDE?.identify?.(identify);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Track an application form event. If properties.step_name is set, the event name
  * sent to Amplitude includes it (e.g. "Application Step Viewed - Email") so the

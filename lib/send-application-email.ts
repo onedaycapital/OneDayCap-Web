@@ -5,6 +5,8 @@
  * Uses Resend. Set RESEND_API_KEY and optionally RESEND_FROM_EMAIL (default subs@onedaycap.com).
  */
 
+import { log, LOG_SCOPE } from "@/lib/log";
+
 const INTERNAL_EMAIL = "subs@onedaycap.com";
 const DEFAULT_FROM_EMAIL = "subs@onedaycap.com";
 /** Display name recipients see in their inbox (e.g. "OneDayCap" instead of "subs"). */
@@ -31,7 +33,7 @@ export interface SendEmailOptions {
 export async function sendEmail(options: SendEmailOptions): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.error("RESEND_API_KEY not set; skipping email.");
+    log.error(LOG_SCOPE.EMAIL, "RESEND_API_KEY not set; skipping email");
     return { ok: false, error: "Email not configured (RESEND_API_KEY)." };
   }
   try {
@@ -60,13 +62,13 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ ok: boolea
     const result = await resend.emails.send(payload);
 
     if (result.error) {
-      console.error("Resend error:", result.error);
+      log.error(LOG_SCOPE.EMAIL, "Resend API error", result.error, { to: Array.isArray(options.to) ? options.to[0] : options.to, subject: options.subject });
       return { ok: false, error: result.error.message };
     }
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("sendEmail error:", e);
+    log.error(LOG_SCOPE.EMAIL, "sendEmail failed", e, { to: Array.isArray(options.to) ? options.to[0] : options.to });
     return { ok: false, error: msg };
   }
 }

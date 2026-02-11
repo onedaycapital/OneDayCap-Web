@@ -13,6 +13,7 @@ import {
 } from "@/lib/email-templates";
 import { computePaperClassification } from "@/lib/paper-classifier";
 import { addWatermarkToPdf, type WatermarkPlacement } from "@/lib/watermark-pdf";
+import { markSubmitted } from "@/lib/application-session";
 
 const INTERNAL_EMAIL = "subs@onedaycap.com";
 
@@ -364,6 +365,9 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
 
     console.log(LOG_PREFIX, "returning success");
     // Don't return pdfBase64 in production to avoid Server Action response size limits (Vercel ~4.5MB).
+    // Mark application session as submitted so abandonment nudges are suppressed.
+    await markSubmitted(payload.personal.email ?? "");
+
     // User gets the PDF via email; processing page shows additionalDetails when present.
     const returnPdf = process.env.NODE_ENV !== "production" ? pdfBase64ForClient : undefined;
     return { success: true, applicationId, pdfBase64: returnPdf, additionalDetails };

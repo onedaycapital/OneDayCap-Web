@@ -22,10 +22,13 @@ import {
 } from "./validation";
 import {
   setAnalyticsUserId,
+  setAnalyticsUserEmail,
   trackApplicationForm,
   ApplicationFormEvents,
   getCampaignEmail,
 } from "@/lib/analytics";
+import { sendSessionEvent } from "@/lib/session-event-client";
+import { RESUME_EMAIL_KEY, RESUME_STEP_KEY } from "@/lib/resume-storage";
 
 const TOTAL_STEPS = 5;
 const AUTOSAVE_DEBOUNCE_MS = 1800;
@@ -86,6 +89,26 @@ export function ApplicationForm() {
     }
   }, []);
 
+  // Prefill from resume link: /apply/resume?t=... stores email and step in sessionStorage
+  useEffect(() => {
+    try {
+      const resumeEmail = sessionStorage.getItem(RESUME_EMAIL_KEY)?.trim();
+      const resumeStep = sessionStorage.getItem(RESUME_STEP_KEY);
+      if (resumeEmail && resumeStep) {
+        const step = Math.min(5, Math.max(1, parseInt(resumeStep, 10) || 1)) as StepId;
+        setFormData((prev) => ({
+          ...prev,
+          step,
+          personal: { ...prev.personal, email: resumeEmail },
+        }));
+        sessionStorage.removeItem(RESUME_EMAIL_KEY);
+        sessionStorage.removeItem(RESUME_STEP_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentStep]);
@@ -101,16 +124,19 @@ export function ApplicationForm() {
     trackApplicationForm(ApplicationFormEvents.FormStarted, { step: 1, step_name: "Email" });
   }, []);
 
-  // Amplitude: set user ID when we have email; track step viewed when step changes
+  // Amplitude: set user ID and email property when we have email; track step viewed; backend session-event for nudges
   useEffect(() => {
     const email = formData.personal.email?.trim();
-    if (email) setAnalyticsUserId(email);
+    if (email) {
+      setAnalyticsUserEmail(email);
+      sendSessionEvent({ email, event: "step_view", step: currentStep });
+    }
     const section = STEP_SECTIONS.find((s) => s.id === currentStep);
     trackApplicationForm(ApplicationFormEvents.StepViewed, {
       step: currentStep,
       step_name: section?.title ?? `Step ${currentStep}`,
     });
-  }, [currentStep]);
+  }, [currentStep, formData.personal.email]);
 
   // Amplitude: session ended (abandonment point) when user leaves the page
   useEffect(() => {
@@ -179,7 +205,7 @@ export function ApplicationForm() {
           const hasStaging = stagingResult.found;
 
           if (hasAbandoned) {
-            setAnalyticsUserId(email);
+            setAnalyticsUserEmail(email);
             // When they click Next on step 1, always go to at least step 2 (abandoned.lastStep can be 1 from autosave)
             const stepToRestore = abandoned.lastStep <= 1 ? nextStep : abandoned.lastStep;
             trackApplicationForm(ApplicationFormEvents.RestoredFromAbandoned, { restored_to_step: stepToRestore, previous_last_step: abandoned.lastStep });
@@ -218,7 +244,8 @@ export function ApplicationForm() {
 
           if (hasStaging) {
             setHadLookupResult(true);
-            setAnalyticsUserId(email);
+            setAnalyticsUserEmail(email);
+            sendSessionEvent({ email, event: "step_complete", step: nextStep });
             trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email", lookup_source: "staging" });
             const merged = {
               ...formData,
@@ -236,7 +263,8 @@ export function ApplicationForm() {
             );
           } else {
             setLookupDebug(stagingResult.debug || null);
-            setAnalyticsUserId(email);
+            setAnalyticsUserEmail(email);
+            sendSessionEvent({ email, event: "step_complete", step: nextStep });
             trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email", lookup_source: "none" });
             await upsertAbandonedProgress(
               email,
@@ -252,6 +280,7 @@ export function ApplicationForm() {
           setLookingUp(false);
         }
       } else {
+        if (email) sendSessionEvent({ email, event: "step_complete", step: nextStep });
         trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email" });
         setStep(nextStep);
       }
@@ -285,8 +314,9 @@ export function ApplicationForm() {
         return;
       }
     }
-    trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: currentStep, to_step: nextStep, step_name: stepName });
     const email = formData.personal.email.trim();
+    if (email) sendSessionEvent({ email, event: "step_complete", step: nextStep });
+    trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: currentStep, to_step: nextStep, step_name: stepName });
     if (email) {
       const payload = toAbandonedPayload(nextStep, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature);
       await upsertAbandonedProgress(email, nextStep, payload);
@@ -334,6 +364,8 @@ export function ApplicationForm() {
           return;
         }
         if (result.success) {
+          const email = formData.personal.email?.trim();
+          if (email) sendSessionEvent({ email, event: "submit", step: 5, application_id: result.applicationId });
           trackApplicationForm(ApplicationFormEvents.FormSubmitted, { application_id: result.applicationId, step: 5, step_name: "Documents & Agreement" });
           if (result.additionalDetails || result.pdfBase64) {
             const safeName =

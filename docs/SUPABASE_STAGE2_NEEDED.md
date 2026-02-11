@@ -1,5 +1,7 @@
 # Stage 2 – Supabase: What We Need From You
 
+**Supabase project:** Use **Merchant DB** only. Do not use the WatermarkFile project for this website. See `docs/SUPABASE_PROJECTS.md`.
+
 To wire the application form to Supabase (email lookup + save applications), we need the following.
 
 ---
