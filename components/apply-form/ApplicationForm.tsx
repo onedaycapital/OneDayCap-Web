@@ -72,7 +72,6 @@ export function ApplicationForm() {
   const [lookingUp, setLookingUp] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submitErrorRef = useRef<HTMLDivElement>(null);
-  const [lookupDebug, setLookupDebug] = useState<string | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
   const [hadLookupResult, setHadLookupResult] = useState(false);
   const [restoredFromAbandoned, setRestoredFromAbandoned] = useState(false);
@@ -193,7 +192,6 @@ export function ApplicationForm() {
       const email = formData.personal.email.trim();
       if (email) {
         setLookingUp(true);
-        setLookupDebug(null);
         try {
           // Fetch both: we want the complete dataset (Staging + abandoned)
           const [abandoned, stagingResult] = await Promise.all([
@@ -270,7 +268,6 @@ export function ApplicationForm() {
               toAbandonedPayload(merged.step, merged.personal, merged.business, merged.financial, merged.creditOwnership, merged.signature)
             );
           } else {
-            setLookupDebug(stagingResult.debug || null);
             setAnalyticsUserEmail(email);
             sendSessionEvent({ email, event: "step_complete", step: nextStep });
             trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email", lookup_source: "none" });
@@ -282,7 +279,6 @@ export function ApplicationForm() {
             setStep(nextStep);
           }
         } catch (e) {
-          setLookupDebug(e instanceof Error ? e.message : String(e));
           setStep(nextStep);
         } finally {
           setLookingUp(false);
@@ -528,12 +524,6 @@ export function ApplicationForm() {
               <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
                 <p className="font-medium">Welcome back</p>
                 <p className="mt-1 text-emerald-800">We&apos;ve restored your previous progress. You&apos;ll go through each step in order with your data prefilled—review and click Next to continue.</p>
-              </div>
-            )}
-            {lookupDebug && (
-              <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
-                <p className="font-medium">Lookup note</p>
-                <p className="mt-1 text-amber-800">{lookupDebug}</p>
               </div>
             )}
             {stepError && (
