@@ -8,7 +8,7 @@ const TABLE = "abandoned_application_progress";
 export type { AbandonedPayload } from "@/lib/abandoned-payload";
 
 export type GetAbandonedResult =
-  | { found: true; lastStep: number; payload: AbandonedPayload }
+  | { found: true; lastStep: number; payload: AbandonedPayload; updatedAt: string }
   | { found: false };
 
 /** Get abandoned progress by email. Check this first when user enters email on Step 1. */
@@ -19,7 +19,7 @@ export async function getAbandonedProgress(email: string): Promise<GetAbandonedR
     const supabase = getSupabaseServer();
     const { data, error } = await supabase
       .from(TABLE)
-      .select("last_step, payload")
+      .select("last_step, payload, updated_at")
       .eq("email", trimmed)
       .limit(1)
       .maybeSingle();
@@ -29,11 +29,15 @@ export async function getAbandonedProgress(email: string): Promise<GetAbandonedR
       return { found: false };
     }
     if (data && typeof data.payload === "object" && typeof data.last_step === "number") {
+      const updatedAt = typeof (data as { updated_at?: string }).updated_at === "string"
+        ? (data as { updated_at: string }).updated_at
+        : new Date().toISOString();
       console.log("[Abandoned] found progress for:", trimmed, "-> restoring, Staging lookup skipped");
       return {
         found: true,
         lastStep: data.last_step as number,
         payload: data.payload as AbandonedPayload,
+        updatedAt,
       };
     }
     return { found: false };

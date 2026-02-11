@@ -205,12 +205,17 @@ export function ApplicationForm() {
           const hasMeaningfulAbandoned = hasAbandoned && abandoned.lastStep >= 2;
           const hasStaging = stagingResult.found;
 
-          // Only show "Welcome back" when we're restoring progress from step 2+ (not from step-1-only autosave or first-time click)
+          // Only show "Welcome back" when we're restoring progress from step 2+ that was saved in a previous session (not just now). Avoids showing it for virgin emails that just got autosaved or for same-session back/next.
+          const WELCOME_BACK_MIN_AGE_MS = 2 * 60 * 1000;
+          const savedLongAgo = hasMeaningfulAbandoned && (Date.now() - new Date(abandoned.updatedAt).getTime() >= WELCOME_BACK_MIN_AGE_MS);
+
           if (hasMeaningfulAbandoned) {
             setAnalyticsUserEmail(email);
             const stepToRestore = abandoned.lastStep;
-            trackApplicationForm(ApplicationFormEvents.RestoredFromAbandoned, { restored_to_step: stepToRestore, previous_last_step: abandoned.lastStep });
-            setRestoredFromAbandoned(true);
+            if (savedLongAgo) {
+              trackApplicationForm(ApplicationFormEvents.RestoredFromAbandoned, { restored_to_step: stepToRestore, previous_last_step: abandoned.lastStep });
+              setRestoredFromAbandoned(true);
+            }
             setHadLookupResult(hasStaging);
             const abandonedPayload = abandoned.payload;
             const staging = hasStaging ? stagingResult : null;
