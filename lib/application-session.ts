@@ -11,6 +11,7 @@ import { getSupabaseServer } from "@/lib/supabase-server";
 import { log, LOG_SCOPE } from "@/lib/log";
 
 const TABLE = "application_sessions";
+const ABANDONED_TABLE = "abandoned_application_progress";
 
 export type SessionEvent = "apply_landing" | "step_view" | "step_complete" | "submit";
 
@@ -103,6 +104,56 @@ export async function upsertSessionEvent(payload: SessionEventPayload): Promise<
   }
 }
 
+/** Get session by email. Returns null if not found. */
+export async function getSessionByEmail(email: string): Promise<ApplicationSessionRow | null> {
+  const e = normalizeEmail(email);
+  if (!e) return null;
+  try {
+    const supabase = getSupabaseServer();
+    const { data, error } = await supabase.from(TABLE).select("*").eq("email", e).limit(1).maybeSingle();
+    if (error || !data) return null;
+    return data as ApplicationSessionRow;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create a session for an email (e.g. for sending a test nudge when no session exists).
+ * Sets last_event_at to 1 hour ago so the row is eligible for 30m nudge logic.
+ */
+export async function createSessionForEmail(email: string): Promise<ApplicationSessionRow | null> {
+  const e = normalizeEmail(email);
+  if (!e) return null;
+  try {
+    const supabase = getSupabaseServer();
+    const token = generateToken();
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from(TABLE)
+      .insert({
+        email: e,
+        token,
+        current_step: 2,
+        last_event: "step_complete",
+        last_event_at: oneHourAgo,
+        started_at: oneHourAgo,
+        submitted_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (error) {
+      log.error(LOG_SCOPE.APP_SESSION, "createSessionForEmail failed", error, { email: e });
+      return null;
+    }
+    return data as ApplicationSessionRow;
+  } catch (err) {
+    log.error(LOG_SCOPE.APP_SESSION, "createSessionForEmail threw", err);
+    return null;
+  }
+}
+
 /** Get session by resume token. Returns null if not found or opted out. */
 export async function getSessionByToken(token: string): Promise<{
   email: string;
@@ -153,6 +204,55 @@ export async function markSubmitted(email: string): Promise<void> {
   } catch (err) {
     log.error(LOG_SCOPE.APP_SESSION, "markSubmitted failed", err);
   }
+}
+
+/**
+ * Backfill application_sessions from abandoned_application_progress so users who have
+ * abandoned progress but no session row (e.g. session-event failed) still get 30m nudge.
+ * Call this before getSessionsFor30mNudge in the cron. Creates a session with last_event_at
+ * set to the abandoned row's updated_at so they qualify for 30m on this run.
+ */
+export async function ensureSessionsFromAbandonedProgress(): Promise<{ created: number }> {
+  const supabase = getSupabaseServer();
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: abandonedRows, error: abandonedError } = await supabase
+    .from(ABANDONED_TABLE)
+    .select("email, last_step, updated_at")
+    .gte("last_step", 2)
+    .lte("updated_at", cutoff);
+
+  if (abandonedError || !abandonedRows?.length) {
+    if (abandonedError) log.error(LOG_SCOPE.APP_SESSION, "ensureSessionsFromAbandonedProgress query failed", abandonedError);
+    return { created: 0 };
+  }
+
+  let created = 0;
+  for (const row of abandonedRows as { email: string; last_step: number; updated_at: string }[]) {
+    const email = normalizeEmail(row.email);
+    if (!email) continue;
+    const { data: existing } = await supabase.from(TABLE).select("id").eq("email", email).limit(1).maybeSingle();
+    if (existing) continue;
+
+    const token = generateToken();
+    const lastEventAt = row.updated_at ?? new Date().toISOString();
+    const { error: insertErr } = await supabase.from(TABLE).insert({
+      email,
+      token,
+      current_step: row.last_step,
+      last_event: "step_complete",
+      last_event_at: lastEventAt,
+      started_at: lastEventAt,
+      submitted_at: null,
+      updated_at: new Date().toISOString(),
+    });
+    if (!insertErr) {
+      created++;
+      log.info(LOG_SCOPE.APP_SESSION, "Backfilled session from abandoned progress", { email });
+    } else {
+      log.error(LOG_SCOPE.APP_SESSION, "Backfill insert failed", insertErr, { email });
+    }
+  }
+  return { created };
 }
 
 /** For 30-min nudge: not submitted, no 30m sent yet, last_event_at >= 30 min ago. */

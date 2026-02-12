@@ -60,4 +60,5 @@ The CC on every nudge already gives you an immediate copy in your inbox; SMS is 
 - **Resume**: Create a row in `application_sessions` with a known `token`, then open `https://<host>/apply/resume?t=<token>`; you should be redirected to /apply with email and step prefilled.
 - **Unsubscribe**: Open `https://<host>/unsubscribe?t=<token>`; row should get `opted_out = true`.
 - **Cron**: Call `GET /api/cron/abandonment-nudges` with header `Authorization: Bearer <CRON_SECRET>` (or `x-cron-secret: <CRON_SECRET>`). Repeat for `followup-15d`, `funnel-digest-noon`, `funnel-digest-3pm`.
+- **Test nudge (one-off)**: Call `GET /api/cron/send-test-nudges` with the same auth to send the 30m nudge to sree@uncha.us and sreedharu@gmail.com (CC subs@onedaycap.com). Use this to confirm delivery and review copy.
 - **Funnel digest**: Ensure Staging (Merchant DB) has rows with matching emails; the digest will show Phone, Revenue, City when found.

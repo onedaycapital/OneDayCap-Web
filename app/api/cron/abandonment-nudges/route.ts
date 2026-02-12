@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  ensureSessionsFromAbandonedProgress,
   getSessionsFor30mNudge,
   getSessionsFor24hNudge,
   isStillEligibleForNudge,
@@ -66,6 +67,8 @@ export async function GET(request: NextRequest) {
   }
   try {
     log.info(LOG_SCOPE.CRON_ABANDONMENT, "Starting run");
+    const { created: backfilled } = await ensureSessionsFromAbandonedProgress();
+    if (backfilled > 0) log.info(LOG_SCOPE.CRON_ABANDONMENT, "Backfilled sessions from abandoned progress", { created: backfilled });
     const [sessions30m, sessions24h] = await Promise.all([
       getSessionsFor30mNudge(),
       getSessionsFor24hNudge(),
