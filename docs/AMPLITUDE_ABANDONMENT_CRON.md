@@ -22,6 +22,8 @@ Run the migration in Supabase SQL Editor:
 
 ## 3. Cron Jobs (Vercel)
 
+**Requirement:** The abandonment-nudges job runs every 5 minutes. Vercel **Hobby** plan only allows cron jobs to run **once per day**. You need **Pro** (or Team) for that schedule; otherwise the cron will not run (see [§9. Troubleshooting](#9-troubleshooting-cron-jobs-not-running)).
+
 | Path | Schedule | Purpose |
 |------|---------|--------|
 | `/api/cron/abandonment-nudges` | Every 5 min | Send 30-min and 24-hour abandonment nudges |
@@ -62,3 +64,35 @@ The CC on every nudge already gives you an immediate copy in your inbox; SMS is 
 - **Cron**: Call `GET /api/cron/abandonment-nudges` with header `Authorization: Bearer <CRON_SECRET>` (or `x-cron-secret: <CRON_SECRET>`). Repeat for `followup-15d`, `funnel-digest-noon`, `funnel-digest-3pm`.
 - **Test nudge (one-off)**: Call `GET /api/cron/send-test-nudges` with the same auth to send the 30m nudge to sree@uncha.us and sreedharu@gmail.com (CC subs@onedaycap.com). Use this to confirm delivery and review copy.
 - **Funnel digest**: Ensure Staging (Merchant DB) has rows with matching emails; the digest will show Phone, Revenue, City when found.
+
+## 9. Troubleshooting: cron jobs not running
+
+If the 30‑min nudge or 3pm (or noon) digest never runs, check the following. **Resend is not the cause** if the application-form confirmation emails work; the same `RESEND_API_KEY` is used for cron emails.
+
+### 9.1 Vercel plan (most common)
+
+**On the Hobby plan, cron jobs can only run once per day.**  
+Our `vercel.json` has:
+
+- `abandonment-nudges`: **every 5 minutes** (`*/5 * * * *`)
+- `funnel-digest-3pm`: once daily at 21:00 UTC
+
+On Hobby, the **every-5‑minute** schedule is **invalid**. Vercel may reject it at deploy time with something like: *"Hobby accounts are limited to daily cron jobs. This cron expression would run more than once per day."* In that case the abandonment-nudges cron will not run at all. The 3pm digest (once per day) is allowed on Hobby, but if *no* crons run, check the next points.
+
+**Fix:** Upgrade to **Pro** (or Team) so crons can run every minute, or change the abandonment job to once per day (and process all eligible 30m/24h in one run—behavior change).
+
+### 9.2 Cron Jobs disabled
+
+- Vercel → Project → **Settings** → **Cron Jobs** (left sidebar).
+- Ensure **Disable Cron Jobs** is **not** turned on. If it is, enable cron jobs and redeploy if needed.
+
+### 9.3 CRON_SECRET and authorization
+
+- Vercel → **Settings** → **Environment Variables**.
+- Ensure **CRON_SECRET** exists and is set for **Production** (and Preview if you test there). If it’s missing or wrong, the cron route returns **401 Unauthorized** and no emails are sent.
+- Vercel automatically sends `Authorization: Bearer <CRON_SECRET>` when invoking cron jobs; the route checks this. Same value must be in the env and in the header.
+
+### 9.4 View cron logs
+
+- Vercel → **Settings** → **Cron Jobs** → open a job → **View Logs**.
+- You’ll see whether the job was invoked and the **response** (e.g. 200 = success, 401 = auth failure, 404 = route not found, 500 = server error). Use this to see if the cron is being called and why it might not be sending emails.
