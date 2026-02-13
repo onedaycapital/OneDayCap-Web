@@ -49,6 +49,38 @@ function formatMonthlyRevenueDisplay(value: string | null | undefined): string {
   return MONTHLY_REVENUE_LEGACY[trimmed] ?? trimmed;
 }
 
+/** Use of Funds: sentence casing for PDF (e.g. working-capital → Working Capital). */
+function formatUseOfFundsDisplay(value: string | null | undefined): string {
+  if (!value?.trim()) return "—";
+  const map: Record<string, string> = {
+    "working-capital": "Working Capital",
+    "business-expansion": "Business Expansion",
+    "debt-refinancing": "Debt Refinancing",
+    others: "Others",
+  };
+  return map[value.trim().toLowerCase()] ?? sentenceCase(value.trim());
+}
+
+/** Type of Business: proper casing for PDF (e.g. llc → LLC, c-corp → C-Corp). */
+function formatTypeOfBusinessDisplay(value: string | null | undefined): string {
+  if (!value?.trim()) return "—";
+  const map: Record<string, string> = {
+    llc: "LLC",
+    "c-corp": "C-Corp",
+    "s-corp": "S-Corp",
+    partnership: "Partnership",
+    others: "Others",
+    inc: "Inc",
+    "c-type": "C-Type",
+  };
+  const lower = value.trim().toLowerCase();
+  return map[lower] ?? sentenceCase(value.trim());
+}
+
+function sentenceCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase().replace(/-(\w)/g, (_, c) => " " + c.toUpperCase());
+}
+
 /** Format funding request as USD with 0 decimals for PDF display, e.g. $65,000. */
 function formatFundingRequestDisplay(value: string | null | undefined): string {
   const digits = (value ?? "").replace(/\D/g, "");
@@ -103,6 +135,7 @@ const ROW_HEIGHT = 22; // more spacing between lines
 const TILE_ROW_HEIGHT = 20;
 const TILE_PAD = 8;
 const LABEL_COL_WIDTH = 100; // fixed width for label so value aligns
+const DETAILS_LABEL_COL_WIDTH = 130; // wider so "Monthly Revenues (Approximate)" doesn't overlap value
 const LIGHT_BG = rgb(0.96, 0.96, 0.96);
 const TILE_BORDER = rgb(0.75, 0.75, 0.75);
 const HIGHLIGHT_BG = rgb(0.93, 0.95, 1);
@@ -246,7 +279,7 @@ export async function generateApplicationPdf(
     font: helveticaBold,
     color: black,
   });
-  page.drawText(f.useOfFunds || "—", {
+  page.drawText(formatUseOfFundsDisplay(f.useOfFunds), {
     x: col1X + TILE_PAD + LABEL_COL_WIDTH,
     y: fromTop(height, yFromTop + TILE_PAD + TILE_ROW_HEIGHT) - VALUE_SIZE,
     size: VALUE_SIZE,
@@ -257,7 +290,7 @@ export async function generateApplicationPdf(
   });
 
   // ---- Right tile: Additional Details (side by side with left tile) ----
-  const detailsValueW = detailsTileW - TILE_PAD * 2 - LABEL_COL_WIDTH;
+  const detailsValueW = detailsTileW - TILE_PAD * 2 - DETAILS_LABEL_COL_WIDTH;
   page.drawRectangle({
     x: detailsTileX,
     y: fromTop(height, yFromTop) - detailsTileH,
@@ -284,7 +317,7 @@ export async function generateApplicationPdf(
       color: black,
     });
     page.drawText(row.value || "—", {
-      x: detailsTileX + TILE_PAD + LABEL_COL_WIDTH,
+      x: detailsTileX + TILE_PAD + DETAILS_LABEL_COL_WIDTH,
       y: fromTop(height, detailsY) - VALUE_SIZE,
       size: VALUE_SIZE,
       font: helvetica,
@@ -344,7 +377,7 @@ export async function generateApplicationPdf(
 
   yLeft = fieldRow("Business Name", b.businessName, col1X, yLeft, LABEL_COL_WIDTH, valueW1);
   yLeft = fieldRow("DBA", b.dba || "—", col1X, yLeft, LABEL_COL_WIDTH, valueW1);
-  yLeft = fieldRow("Type of Business", b.typeOfBusiness, col1X, yLeft, LABEL_COL_WIDTH, valueW1);
+  yLeft = fieldRow("Type of Business", formatTypeOfBusinessDisplay(b.typeOfBusiness), col1X, yLeft, LABEL_COL_WIDTH, valueW1);
   yLeft = fieldRow(
     "Start Date of Business",
     b.startDateOfBusiness,

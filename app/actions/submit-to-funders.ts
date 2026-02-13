@@ -2,6 +2,7 @@
 
 import { getSupabaseServer } from "@/lib/supabase-server";
 import { sendEmail, getInternalEmail } from "@/lib/send-application-email";
+import { addWatermarkToPdf, type WatermarkPlacement } from "@/lib/watermark-pdf";
 
 const BUCKET = "merchant-documents";
 const INTERNAL_CC = "subs@onedaycap.com";
@@ -243,21 +244,27 @@ export async function submitApplicationToFunders(
       continue;
     }
 
-    const buffer = Buffer.from(await blob.arrayBuffer());
+    let buffer = Buffer.from(await blob.arrayBuffer());
     let filename = row.file_name ?? row.storage_path.split("/").pop() ?? "document";
-    if (row.file_type === "bank_statements") {
+    let placement: WatermarkPlacement = "top-half";
+    if (row.file_type === "application_pdf") {
+      placement = "application-form-terms";
+    } else if (row.file_type === "bank_statements") {
       const ext = filename.split(".").pop() || "pdf";
       bankStatementIndex += 1;
       filename = `bank-statement-${bankStatementIndex}.${ext}`;
+      placement = "page1-top30";
     } else if (row.file_type === "void_check") {
       const ext = filename.split(".").pop() || "pdf";
       filename = `void-check.${ext}`;
+      placement = "top-half";
     } else if (row.file_type === "drivers_license") {
       const ext = filename.split(".").pop() || "pdf";
       filename = `drivers-license.${ext}`;
+      placement = "top-half";
     }
-
-    attachments.push({ filename, content: buffer });
+    const content = await addWatermarkToPdf(buffer, placement);
+    attachments.push({ filename, content });
     attachmentUrls.push({ name: filename, storage_path: row.storage_path });
   }
 
@@ -287,7 +294,7 @@ export async function submitApplicationToFunders(
 <p>
 Merchant Name: ${escapeHtml(app?.business_name ?? "—")}<br>
 Funds Requested: ${formatCurrencyDisplay(app?.funding_request)}<br>
-Reason for Funds: ${escapeHtml(app?.use_of_funds ?? "—")}<br>
+Reason for Funds: ${escapeHtml(formatUseOfFundsForEmail(app?.use_of_funds))}<br>
 State: ${escapeHtml(app?.state ?? "—")}<br>
 Industry: ${escapeHtml(app?.industry ?? "—")}<br>
 Monthly Revenues (Approximate): ${formatCurrencyDisplay(app?.monthly_revenue)}<br>
@@ -508,4 +515,16 @@ function formatCurrencyDisplay(s: string | null | undefined): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+/** Use of Funds: sentence casing for emails (e.g. working-capital → Working Capital). */
+function formatUseOfFundsForEmail(s: string | null | undefined): string {
+  if (!(s ?? "").trim()) return "—";
+  const map: Record<string, string> = {
+    "working-capital": "Working Capital",
+    "business-expansion": "Business Expansion",
+    "debt-refinancing": "Debt Refinancing",
+    others: "Others",
+  };
+  return map[(s ?? "").trim().toLowerCase()] ?? (s ?? "").trim();
 }
