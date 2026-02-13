@@ -1,5 +1,9 @@
 # Deployment checklist (Vercel)
 
+## Cron: pending-documents-reminder
+
+On **Vercel Hobby**, crons can run only **once per day**. The pending-documents-reminder is set to `0 14 * * *` (daily at 14:00 UTC) so deployment succeeds. On **Pro**, you can change it in `vercel.json` to `*/5 * * * *` for every-5-minute reminders.
+
 ## Why production might not show the new version
 
 1. **Git not triggering deploy**
