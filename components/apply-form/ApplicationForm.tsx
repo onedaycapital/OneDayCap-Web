@@ -20,6 +20,7 @@ import {
   validateStep3,
   validateStep4,
   validateStep4SignOff,
+  validateStep5Documents,
 } from "./validation";
 import {
   setAnalyticsUserId,
@@ -71,6 +72,7 @@ export function ApplicationForm() {
   const [formData, setFormData] = useState<ApplicationFormData>(initialFormState);
   const [submitting, setSubmitting] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [lookupStage, setLookupStage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submitErrorRef = useRef<HTMLDivElement>(null);
   const [stepError, setStepError] = useState<string | null>(null);
@@ -217,7 +219,7 @@ export function ApplicationForm() {
       return;
     }
 
-    // Step 2: Email — validate, lookup/restore/welcome back, then advance
+    // Step 2: Email — validate, lookup/restore/welcome back, then advance (with staged CTA messages)
     if (currentStep === 2) {
       const err = validateStep1(formData.personal);
       if (err) {
@@ -227,11 +229,26 @@ export function ApplicationForm() {
       }
       const email = formData.personal.email.trim();
       setLookingUp(true);
+      setLookupStage("Checking our records…");
+      const stageMessages = [
+        { at: 0, msg: "Checking our records…" },
+        { at: 1500, msg: "Checking partner network…" },
+        { at: 3000, msg: "Preparing your application…" },
+        { at: 4500, msg: "Continuing…" },
+      ];
+      const LOOKUP_MIN_MS = 5000;
+      const stageTimers: ReturnType<typeof setTimeout>[] = [];
+      stageMessages.forEach(({ at, msg }) => {
+        if (at > 0) stageTimers.push(setTimeout(() => setLookupStage(msg), at));
+      });
+      const minDelay = new Promise<void>((r) => setTimeout(r, LOOKUP_MIN_MS));
+      const dataPromise = Promise.all([
+        getAbandonedProgress(email),
+        lookupMerchantByEmail(email),
+      ]);
       try {
-        const [abandoned, stagingResult] = await Promise.all([
-          getAbandonedProgress(email),
-          lookupMerchantByEmail(email),
-        ]);
+        const [abandoned, stagingResult] = (await Promise.all([dataPromise, minDelay]))[0];
+        stageTimers.forEach((t) => clearTimeout(t));
         const hasAbandoned = abandoned.found;
         // Only "restore" when they had reached step 3+ before (avoid restoring to step 2 when autosave has lastStep 2)
         const hasMeaningfulAbandoned = hasAbandoned && abandoned.lastStep >= 3;
@@ -316,6 +333,8 @@ export function ApplicationForm() {
       } catch {
         setStep(3);
       } finally {
+        stageTimers.forEach((t) => clearTimeout(t));
+        setLookupStage(null);
         setLookingUp(false);
       }
       return;
@@ -412,6 +431,11 @@ export function ApplicationForm() {
       setStepError(null);
       if (!formData.savedApplicationId) {
         setSubmitError("Please complete Step 4 (Sign & Conclude) first. Go back and click Save & Next.");
+        return;
+      }
+      const documentsErr = validateStep5Documents(formData.documents);
+      if (documentsErr) {
+        setSubmitError(documentsErr);
         return;
       }
       if (submitting) return;
@@ -678,7 +702,7 @@ export function ApplicationForm() {
                       disabled={lookingUp}
                       className="rounded-lg bg-[var(--brand-blue)] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-blue-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-blue)] focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      {lookingUp ? "Looking up your details…" : "Next"}
+                      {lookingUp ? (lookupStage ?? "Looking up your details…") : "Next"}
                     </button>
                   ) : currentStep === 4 ? (
                     <button

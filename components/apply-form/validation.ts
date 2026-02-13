@@ -53,6 +53,14 @@ export function validateStep4SignOff(
   return null;
 }
 
+/** Validates step 5 (Upload Documents): at least one bank statement is required. */
+export function validateStep5Documents(documents: ApplicationFormData["documents"]): string | null {
+  if (!documents.bankStatements?.length) {
+    return "At least one Bank Statement is required before submitting documents.";
+  }
+  return null;
+}
+
 export function validateStep5(
   _documents: ApplicationFormData["documents"],
   signature: ApplicationFormData["signature"],

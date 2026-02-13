@@ -263,10 +263,10 @@ export function Step5DocumentsAndSignature({
       <div className="space-y-6">
         <div>
           <label className="block text-sm font-medium text-slate-700">
-            Bank Statements
+            Bank Statements <span className="text-red-600">*</span>
           </label>
           <p className="text-slate-500 text-xs">
-            Consecutive months of bank statements. PDF preferred. Multiple files
+            Consecutive months of bank statements (required). PDF preferred. Multiple files
             allowed.
           </p>
           <input
