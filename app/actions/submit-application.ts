@@ -14,6 +14,7 @@ import {
 import { computePaperClassification } from "@/lib/paper-classifier";
 import { addWatermarkToPdf, type WatermarkPlacement } from "@/lib/watermark-pdf";
 import { markSubmitted } from "@/lib/application-session";
+import { getMatchedFunderIds, submitApplicationToFunders } from "@/app/actions/submit-to-funders";
 
 const INTERNAL_EMAIL = "subs@onedaycap.com";
 
@@ -367,6 +368,17 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
     // Don't return pdfBase64 in production to avoid Server Action response size limits (Vercel ~4.5MB).
     // Mark application session as submitted so abandonment nudges are suppressed.
     await markSubmitted(payload.personal.email ?? "");
+
+    // Auto-send to shortlisted funders (do not fail the submit if this errors)
+    try {
+      const funderIds = await getMatchedFunderIds(applicationId);
+      if (funderIds.length > 0) {
+        const result = await submitApplicationToFunders(applicationId, funderIds);
+        if (result.submitted) console.log(LOG_PREFIX, "auto-sent to", result.submitted, "funder(s)");
+      }
+    } catch (e) {
+      console.error(LOG_PREFIX, "auto-send to funders failed", e);
+    }
 
     // User gets the PDF via email; processing page shows additionalDetails when present.
     const returnPdf = process.env.NODE_ENV !== "production" ? pdfBase64ForClient : undefined;

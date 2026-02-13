@@ -1,6 +1,6 @@
 # Production test: full funder flow
 
-Use this to test the full scenario in production: application submit → submit to funders (shortlist) → emails (funder + CC + summary).
+Use this to test the full scenario in production: application submit → **auto-send to shortlisted funders** → emails (funder + CC + summary). You can also send manually from `/submit-to-funders`.
 
 ---
 
@@ -9,6 +9,29 @@ Use this to test the full scenario in production: application submit → submit 
 - [ ] **Build passes:** `npm run build` (already verified).
 - [ ] **Deploy:** Push to your repo; Vercel (or your host) deploys. Ensure production env has: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` (e.g. subs@onedaycap.com; domain must be verified in Resend).
 - [ ] **Funder schema in production DB:** In Supabase (Merchant DB) → SQL Editor, run `docs/supabase-funder-schema.sql` once if not already done (adds `phone` to funder_contacts if missing).
+
+---
+
+## Is Resend configured for this workflow?
+
+The funder flow uses the **same** `sendEmail()` used for application submit (merchant confirmation + internal notification). So if those emails work in production, Resend is already set up; the funder flow only adds **more recipients (To/CC)** and **multiple attachments** (application PDF + bank statements + void check + driver’s license).
+
+**Checklist:**
+
+| Check | Where | Why |
+|-------|--------|-----|
+| **RESEND_API_KEY** set in production | Vercel → Project → Settings → Environment Variables | Without it, `sendEmail()` returns “Email not configured” and no email is sent. |
+| **From domain verified** | Resend Dashboard → Domains | The “from” address (e.g. `subs@onedaycap.com` or `RESEND_FROM_EMAIL`) must use a domain you’ve added and verified in Resend (DNS records). Otherwise Resend may reject or fail the send. |
+| **RESEND_FROM_EMAIL** (optional) | Vercel env | Default is `subs@onedaycap.com`. Set only if you use a different sending address; it must use a verified domain. |
+
+**Funder-specific behavior:**
+
+- **To:** From `funder_submission_rules.to_emails` (or `funder_contacts.email`).
+- **CC:** Those CC addresses **plus** `subs@onedaycap.com` (so you always get a copy).
+- **Attachments:** All application files (PDF + uploads). Same Resend attachment API as application submit; if that works, funder emails will too.
+- **Summary email:** Separate send to `subs@onedaycap.com` (no attachments). No extra config.
+
+**Quick test:** If you can receive the merchant confirmation email and the internal “application submitted” email when someone completes the apply form, Resend is configured correctly for the funder workflow too. Then run the seed, use submit-to-funders, and confirm you get the funder email, CC, and summary.
 
 ---
 
@@ -42,11 +65,12 @@ Use an email you have access to so you receive the funder email, the CC, and the
 
 ---
 
-## 2. Submit a test application
+## 2. Submit a test application (triggers auto-send to shortlisted funders)
 
 1. Open production site → **Apply** (e.g. `https://www.onedaycap.com/apply` or your production URL).
 2. Complete all 5 steps and submit (use test data; you can use your own email so you get the merchant confirmation too).
-3. Confirm you receive the merchant confirmation email and that a row appears in **merchant_applications** (and **merchant_application_files** for the PDF + any uploads).
+3. On success, the app **automatically** finds funders whose guidelines match this application (revenue, state, funding range, etc.) and sends the full application package to each, CC subs@, plus a summary email to subs@. So you should receive: merchant confirmation, internal “application submitted” email, **funder email(s)** (if any funder matched), **CC** of those, and **summary** (who was reached).
+4. For **Eminent** to match: application monthly revenue must be **$50K+**. For **Pivot**: **$10K–$50K**. If the test application’s “Monthly Revenue” is outside those ranges, no funder will match and no funder email is sent; use `/submit-to-funders` to send manually, or change the application’s revenue to fall in range and submit again.
 
 ---
 
@@ -70,6 +94,7 @@ Use an email you have access to so you receive the funder email, the CC, and the
 
 ## 5. If something fails
 
+- **Nothing happened after submit (no funder email, no summary):** Auto-send only runs for **shortlisted** funders. Check that the application’s Monthly Revenue and Funding Request (and state/industry if set on guidelines) match at least one funder’s guidelines. Eminent = $50K+ monthly revenue; Pivot = $10K–$50K. If none match, use `/submit-to-funders` to send manually.
 - **No funder in list:** Check funders + funder_contacts exist and the page loaded (refresh).
 - **“No application files” / “Application PDF not found”:** Ensure the test application completed and that **merchant_application_files** has at least the `application_pdf` row for that application.
 - **Email not received:** Check Resend dashboard for sends; confirm RESEND_FROM_EMAIL domain is verified; check spam.
