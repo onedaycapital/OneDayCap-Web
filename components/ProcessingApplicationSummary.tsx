@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getGiftForFundingRequest } from "@/lib/gift-from-funding";
 
 const STORAGE_KEY = "application_pdf_download";
 
@@ -13,6 +14,7 @@ interface StoredData {
   base64?: string | null;
   filename?: string;
   additionalDetails?: AdditionalDetailsRow[] | null;
+  fundingRequest?: string | null;
 }
 
 function DownloadIcon({ className }: { className?: string }) {
@@ -34,6 +36,7 @@ function OpenInNewTabIcon({ className }: { className?: string }) {
 export function ProcessingApplicationSummary() {
   const [pdf, setPdf] = useState<{ base64: string; filename: string } | null>(null);
   const [additionalDetails, setAdditionalDetails] = useState<AdditionalDetailsRow[] | null>(null);
+  const [fundingRequest, setFundingRequest] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -45,6 +48,9 @@ export function ProcessingApplicationSummary() {
         }
         if (data?.additionalDetails && Array.isArray(data.additionalDetails) && data.additionalDetails.length > 0) {
           setAdditionalDetails(data.additionalDetails);
+        }
+        if (data?.fundingRequest != null && String(data.fundingRequest).trim() !== "") {
+          setFundingRequest(String(data.fundingRequest).trim());
         }
         sessionStorage.removeItem(STORAGE_KEY);
       }
@@ -86,8 +92,10 @@ export function ProcessingApplicationSummary() {
 
   const hasPdf = !!pdf;
   const hasDetails = !!additionalDetails?.length;
+  const gift = fundingRequest ? getGiftForFundingRequest(fundingRequest) : null;
+  const hasGift = !!gift;
 
-  if (!hasPdf && !hasDetails) return null;
+  if (!hasPdf && !hasDetails && !hasGift) return null;
 
   return (
     <>
@@ -127,6 +135,17 @@ export function ProcessingApplicationSummary() {
               </div>
             ))}
           </dl>
+        </div>
+      )}
+
+      {hasGift && gift && (
+        <div className="relative overflow-hidden rounded-xl border-2 border-amber-300 bg-gradient-to-br from-amber-400 via-orange-400 to-rose-500 p-4 shadow-lg">
+          <div className="absolute right-2 top-2 text-3xl opacity-90" style={{ filter: "drop-shadow(0 0 6px rgba(255,255,255,0.9)) drop-shadow(0 0 12px rgba(255,255,255,0.6))" }} aria-hidden>🎁</div>
+          <div className="relative">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-900/80">Your guaranteed gift</p>
+            <p className="mt-1 font-heading text-sm font-bold text-white drop-shadow-sm">Free Gift — {gift.label}</p>
+            <p className="mt-0.5 text-[10px] text-white/95">Complete funding to receive this reward.</p>
+          </div>
         </div>
       )}
     </>

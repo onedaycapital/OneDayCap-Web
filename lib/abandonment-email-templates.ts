@@ -3,12 +3,17 @@
  * Placeholders: {{resumeUrl}}, {{unsubscribeUrl}}
  */
 
+/** Base URL for resume/unsubscribe links in emails. Prefer canonical production domain so CTAs never point at vercel.app. */
 function baseUrl(): string {
-  const u = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
-  if (u) return u.startsWith("http") ? u : `https://${u}`;
+  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit && explicit.startsWith("http")) return explicit.replace(/\/$/, "");
+  const vercel = process.env.VERCEL_URL;
+  if (vercel && vercel.includes("vercel.app")) return "https://www.onedaycap.com";
+  if (vercel) return vercel.startsWith("http") ? vercel : `https://${vercel}`;
   return "https://www.onedaycap.com";
 }
 
+/** Unique resume URL for this session (token identifies the user's application; no email in URL for privacy). */
 export function resumeUrl(token: string): string {
   return `${baseUrl()}/apply/resume?t=${encodeURIComponent(token)}`;
 }
@@ -27,9 +32,11 @@ export function getNudge30mBody(token: string): string {
   const resume = resumeUrl(token);
   const unsub = unsubscribeUrl(token);
   return `
-<p>You were almost done. Pick up where you left off in 2 minutes.</p>
+<p>You are almost done with your funding application. Pick up where you left off in a minute to complete.</p>
+<p>Ensure you are uploading 3 latest bank statements and we will get your funding quotes within this hour.</p>
 <p><a href="${resume}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;">Resume Application</a></p>
 <p>Complete today and get a faster decision. And redeem your gift after funding.</p>
+<p>Sincerely,<br>OneDayCap Team<br>subs@onedaycap.com | www.onedaycap.com</p>
 <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;">
 <p style="font-size:12px;color:#6b7280;">If you don't want reminders, <a href="${unsub}">click here to opt out</a>.</p>
 `.trim();

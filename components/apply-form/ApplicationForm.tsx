@@ -12,6 +12,7 @@ import { Step5DocumentsAndSignature } from "./steps/Step5DocumentsAndSignature";
 import { submitApplication } from "@/app/actions/submit-application";
 import { lookupMerchantByEmail } from "@/app/actions/lookup-merchant";
 import { getAbandonedProgress, upsertAbandonedProgress } from "@/app/actions/abandoned-progress";
+import { sendFundingLeadNotification } from "@/app/actions/send-funding-lead-notification";
 import { buildAbandonedPayload } from "@/lib/abandoned-payload";
 import {
   validateStep1,
@@ -122,7 +123,8 @@ export function ApplicationForm() {
 
   // Amplitude: form started (once on mount)
   useEffect(() => {
-    trackApplicationForm(ApplicationFormEvents.FormStarted, { step: 1, step_name: "Email" });
+    const section = STEP_SECTIONS.find((s) => s.id === 1);
+    trackApplicationForm(ApplicationFormEvents.FormStarted, { step: 1, step_name: section?.title ?? "Financial and Funding" });
   }, []);
 
   // Amplitude: set user ID and email property when we have email; track step viewed; backend session-event for nudges
@@ -183,134 +185,132 @@ export function ApplicationForm() {
     setStepError(null);
     if (currentStep >= TOTAL_STEPS) return;
     const nextStep = (currentStep + 1) as StepId;
-
-    if (currentStep === 1) {
-      const err = validateStep1(formData.personal);
-      if (err) {
-        setStepError(err);
-        trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 1, step_name: "Email", validation_error: err });
-        return;
-      }
-      const email = formData.personal.email.trim();
-      if (email) {
-        setLookingUp(true);
-        try {
-          // Fetch both: we want the complete dataset (Staging + abandoned)
-          const [abandoned, stagingResult] = await Promise.all([
-            getAbandonedProgress(email),
-            lookupMerchantByEmail(email),
-          ]);
-
-          const hasAbandoned = abandoned.found;
-          const hasMeaningfulAbandoned = hasAbandoned && abandoned.lastStep >= 2;
-          const hasStaging = stagingResult.found;
-
-          // Only show "Welcome back" when we're restoring progress from step 2+ that was saved in a previous session (not just now). Avoids showing it for virgin emails that just got autosaved or for same-session back/next.
-          const WELCOME_BACK_MIN_AGE_MS = 2 * 60 * 1000;
-          const savedLongAgo = hasMeaningfulAbandoned && (Date.now() - new Date(abandoned.updatedAt).getTime() >= WELCOME_BACK_MIN_AGE_MS);
-
-          if (hasMeaningfulAbandoned) {
-            setAnalyticsUserEmail(email);
-            const stepToRestore = abandoned.lastStep;
-            if (savedLongAgo) {
-              trackApplicationForm(ApplicationFormEvents.RestoredFromAbandoned, { restored_to_step: stepToRestore, previous_last_step: abandoned.lastStep });
-              setRestoredFromAbandoned(true);
-            }
-            setHadLookupResult(hasStaging);
-            const abandonedPayload = abandoned.payload;
-            const staging = hasStaging ? stagingResult : null;
-            const basePersonal = { ...formData.personal, ...(staging?.personal ?? {}) } as Record<string, unknown>;
-            const baseBusiness = { ...formData.business, ...(staging?.business ?? {}) } as Record<string, unknown>;
-            const baseFinancial = { ...formData.financial, ...(staging?.financial ?? {}) } as Record<string, unknown>;
-            const baseCredit = { ...formData.creditOwnership, ...(staging?.creditOwnership ?? {}) } as Record<string, unknown>;
-            const mergedPersonal = mergeSectionPreferNonEmpty(basePersonal, abandonedPayload.personal as Record<string, unknown>) as unknown as ApplicationFormData["personal"];
-            const mergedBusiness = mergeSectionPreferNonEmpty(baseBusiness, abandonedPayload.business as Record<string, unknown>) as unknown as ApplicationFormData["business"];
-            const mergedFinancial = mergeSectionPreferNonEmpty(baseFinancial, abandonedPayload.financial as Record<string, unknown>) as unknown as ApplicationFormData["financial"];
-            const mergedCredit = mergeSectionPreferNonEmpty(baseCredit, abandonedPayload.creditOwnership as Record<string, unknown>) as unknown as ApplicationFormData["creditOwnership"];
-            setFormData({
-              step: stepToRestore as StepId,
-              personal: mergedPersonal,
-              business: mergedBusiness,
-              financial: mergedFinancial,
-              creditOwnership: mergedCredit,
-              documents: initialFormState.documents,
-              signature: abandonedPayload.signature,
-            });
-            setLookingUp(false);
-            return;
-          }
-
-          // Has abandoned but only step 1 (e.g. autosave from this session): advance to step 2 without "Welcome back"
-          if (hasAbandoned && abandoned.lastStep <= 1) {
-            setAnalyticsUserEmail(email);
-            sendSessionEvent({ email, event: "step_complete", step: nextStep });
-            trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email", lookup_source: "abandoned_step1_only" });
-            await upsertAbandonedProgress(
-              email,
-              nextStep,
-              toAbandonedPayload(nextStep, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature)
-            );
-            setStep(nextStep);
-            setLookingUp(false);
-            return;
-          }
-
-          if (hasStaging) {
-            setHadLookupResult(true);
-            setAnalyticsUserEmail(email);
-            sendSessionEvent({ email, event: "step_complete", step: nextStep });
-            trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email", lookup_source: "staging" });
-            const merged = {
-              ...formData,
-              step: nextStep,
-              personal: { ...formData.personal, ...stagingResult.personal },
-              business: { ...formData.business, ...stagingResult.business },
-              financial: { ...formData.financial, ...stagingResult.financial },
-              creditOwnership: { ...formData.creditOwnership, ...stagingResult.creditOwnership },
-            };
-            setFormData(merged);
-            await upsertAbandonedProgress(
-              email,
-              nextStep,
-              toAbandonedPayload(merged.step, merged.personal, merged.business, merged.financial, merged.creditOwnership, merged.signature)
-            );
-          } else {
-            setAnalyticsUserEmail(email);
-            sendSessionEvent({ email, event: "step_complete", step: nextStep });
-            trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email", lookup_source: "none" });
-            await upsertAbandonedProgress(
-              email,
-              nextStep,
-              toAbandonedPayload(nextStep, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature)
-            );
-            setStep(nextStep);
-          }
-        } catch (e) {
-          setStep(nextStep);
-        } finally {
-          setLookingUp(false);
-        }
-      } else {
-        if (email) sendSessionEvent({ email, event: "step_complete", step: nextStep });
-        trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: nextStep, step_name: "Email" });
-        setStep(nextStep);
-      }
-      return;
-    }
-
     const section = STEP_SECTIONS.find((s) => s.id === currentStep);
     const stepName = section?.title ?? `Step ${currentStep}`;
 
+    // Step 1: Financial and Funding — validate, notify subs@, then advance
+    if (currentStep === 1) {
+      const err = validateStep3(formData.financial);
+      if (err) {
+        setStepError(err);
+        trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 1, step_name: stepName, validation_error: err });
+        return;
+      }
+      sendFundingLeadNotification({ email: formData.personal.email || null, financial: formData.financial }).catch(() => {});
+      const email = formData.personal.email?.trim();
+      if (email) sendSessionEvent({ email, event: "step_complete", step: 1 });
+      trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 1, to_step: 2, step_name: stepName });
+      setStep(2);
+      return;
+    }
+
+    // Step 2: Email — validate, lookup/restore/welcome back, then advance
     if (currentStep === 2) {
-      const err = validateStep2(formData.business);
+      const err = validateStep1(formData.personal);
       if (err) {
         setStepError(err);
         trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 2, step_name: stepName, validation_error: err });
         return;
       }
+      const email = formData.personal.email.trim();
+      setLookingUp(true);
+      try {
+        const [abandoned, stagingResult] = await Promise.all([
+          getAbandonedProgress(email),
+          lookupMerchantByEmail(email),
+        ]);
+        const hasAbandoned = abandoned.found;
+        // Only "restore" when they had reached step 3+ before (avoid restoring to step 2 when autosave has lastStep 2)
+        const hasMeaningfulAbandoned = hasAbandoned && abandoned.lastStep >= 3;
+        const hasStaging = stagingResult.found;
+        const WELCOME_BACK_MIN_AGE_MS = 2 * 60 * 1000;
+        const savedLongAgo = hasMeaningfulAbandoned && (Date.now() - new Date(abandoned.updatedAt).getTime() >= WELCOME_BACK_MIN_AGE_MS);
+
+        if (hasMeaningfulAbandoned) {
+          setAnalyticsUserEmail(email);
+          const stepToRestore = abandoned.lastStep;
+          if (savedLongAgo) {
+            trackApplicationForm(ApplicationFormEvents.RestoredFromAbandoned, { restored_to_step: stepToRestore, previous_last_step: abandoned.lastStep });
+            setRestoredFromAbandoned(true);
+          }
+          setHadLookupResult(hasStaging);
+          const abandonedPayload = abandoned.payload;
+          const staging = hasStaging ? stagingResult : null;
+          const basePersonal = { ...formData.personal, ...(staging?.personal ?? {}) } as Record<string, unknown>;
+          const baseBusiness = { ...formData.business, ...(staging?.business ?? {}) } as Record<string, unknown>;
+          const baseFinancial = { ...formData.financial, ...(staging?.financial ?? {}) } as Record<string, unknown>;
+          const baseCredit = { ...formData.creditOwnership, ...(staging?.creditOwnership ?? {}) } as Record<string, unknown>;
+          const mergedPersonal = mergeSectionPreferNonEmpty(basePersonal, abandonedPayload.personal as Record<string, unknown>) as unknown as ApplicationFormData["personal"];
+          const mergedBusiness = mergeSectionPreferNonEmpty(baseBusiness, abandonedPayload.business as Record<string, unknown>) as unknown as ApplicationFormData["business"];
+          const mergedFinancial = mergeSectionPreferNonEmpty(baseFinancial, abandonedPayload.financial as Record<string, unknown>) as unknown as ApplicationFormData["financial"];
+          const mergedCredit = mergeSectionPreferNonEmpty(baseCredit, abandonedPayload.creditOwnership as Record<string, unknown>) as unknown as ApplicationFormData["creditOwnership"];
+          setFormData({
+            step: stepToRestore as StepId,
+            personal: mergedPersonal,
+            business: mergedBusiness,
+            financial: mergedFinancial,
+            creditOwnership: mergedCredit,
+            documents: initialFormState.documents,
+            signature: abandonedPayload.signature,
+          });
+          setLookingUp(false);
+          return;
+        }
+        if (hasAbandoned && abandoned.lastStep <= 1) {
+          setAnalyticsUserEmail(email);
+          sendSessionEvent({ email, event: "step_complete", step: 2 });
+          trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 2, to_step: 3, step_name: stepName, lookup_source: "abandoned_step1_only" });
+          await upsertAbandonedProgress(
+            email,
+            3,
+            toAbandonedPayload(3, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature)
+          );
+          setStep(3);
+          setLookingUp(false);
+          return;
+        }
+        if (hasStaging) {
+          setHadLookupResult(true);
+          setAnalyticsUserEmail(email);
+          sendSessionEvent({ email, event: "step_complete", step: 2 });
+          trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 2, to_step: 3, step_name: stepName, lookup_source: "staging" });
+          const merged = {
+            ...formData,
+            step: 3 as StepId,
+            personal: { ...formData.personal, ...stagingResult.personal },
+            business: { ...formData.business, ...stagingResult.business },
+            financial: { ...formData.financial, ...stagingResult.financial },
+            creditOwnership: { ...formData.creditOwnership, ...stagingResult.creditOwnership },
+          };
+          setFormData(merged);
+          await upsertAbandonedProgress(
+            email,
+            3,
+            toAbandonedPayload(3, merged.personal, merged.business, merged.financial, merged.creditOwnership, merged.signature)
+          );
+          setStep(3);
+        } else {
+          setAnalyticsUserEmail(email);
+          sendSessionEvent({ email, event: "step_complete", step: 2 });
+          trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 2, to_step: 3, step_name: stepName, lookup_source: "none" });
+          await upsertAbandonedProgress(
+            email,
+            3,
+            toAbandonedPayload(3, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature)
+          );
+          setStep(3);
+        }
+      } catch {
+        setStep(3);
+      } finally {
+        setLookingUp(false);
+      }
+      return;
     }
+
+    // Steps 3, 4: validate by section (Business, Credit & Ownership)
     if (currentStep === 3) {
-      const err = validateStep3(formData.financial);
+      const err = validateStep2(formData.business);
       if (err) {
         setStepError(err);
         trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 3, step_name: stepName, validation_error: err });
@@ -389,6 +389,7 @@ export function ApplicationForm() {
                   base64: result.pdfBase64 ?? null,
                   filename,
                   additionalDetails: result.additionalDetails ?? null,
+                  fundingRequest: formData.financial.fundingRequest ?? null,
                 })
               );
             } catch {
@@ -548,6 +549,15 @@ export function ApplicationForm() {
             <form onSubmit={handleSubmit} className="mt-8">
               <div className="min-h-[320px]">
                 {currentStep === 1 && (
+                  <Step3FinancialFunding
+                    data={formData.financial}
+                    onChange={(financial) =>
+                      setFormData((prev) => ({ ...prev, financial }))
+                    }
+                    highlightEmpty={hadLookupResult}
+                  />
+                )}
+                {currentStep === 2 && (
                   <Step1PersonalInfo
                     data={formData.personal}
                     onChange={(personal) =>
@@ -555,20 +565,11 @@ export function ApplicationForm() {
                     }
                   />
                 )}
-                {currentStep === 2 && (
+                {currentStep === 3 && (
                   <Step2BusinessInfo
                     data={formData.business}
                     onChange={(business) =>
                       setFormData((prev) => ({ ...prev, business }))
-                    }
-                    highlightEmpty={hadLookupResult}
-                  />
-                )}
-                {currentStep === 3 && (
-                  <Step3FinancialFunding
-                    data={formData.financial}
-                    onChange={(financial) =>
-                      setFormData((prev) => ({ ...prev, financial }))
                     }
                     highlightEmpty={hadLookupResult}
                   />

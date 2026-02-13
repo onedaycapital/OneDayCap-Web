@@ -6,7 +6,7 @@ import { ConfettiReward } from "./ConfettiReward";
 import { RewardSparkles } from "./RewardSparkles";
 
 const TIERS = [
-  { min: 50, label: "$50k+", reward: "AirPods Pro 3 earbuds" },
+  { min: 20, label: "$20k+", reward: "AirPods Pro 3 earbuds" },
   { min: 100, label: "$100k+", reward: "iPad Air" },
   { min: 150, label: "$150k+", reward: "iPhone 17" },
   { min: 250, label: "$250k+", reward: "Apple MacBook Air" },

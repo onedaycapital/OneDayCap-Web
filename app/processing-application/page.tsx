@@ -18,7 +18,7 @@ export default function ProcessingApplicationPage() {
       <main className="min-h-screen pt-24 md:pt-28 pb-20 px-4 sm:px-6 bg-[var(--background)]">
         {/* Three tiles above the hero: Status, PDF (if available), Additional Details (if available) */}
         <section className="max-w-6xl mx-auto mt-4 sm:mt-6 mb-6 sm:mb-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* Tile 1: Processing Your Application (always shown) */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-[var(--brand-blue)]/40 transition-colors">
               <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</h2>

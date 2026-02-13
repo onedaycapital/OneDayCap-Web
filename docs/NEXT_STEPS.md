@@ -4,6 +4,14 @@ All Supabase work uses **Merchant DB** only. Do not touch **WatermarkFile**. See
 
 ---
 
+## 0. Funder subsystem (Phase 1 – done)
+
+- **Schema:** Run `docs/supabase-funder-schema.sql` in Merchant DB (once). Adds funders, funder_contacts, funder_guidelines, funder_submissions, submission_messages, submission_events, etc.
+- **Submit to funders:** Internal page `/submit-to-funders` — pick an application, select funders (shortlist = matched by guidelines; see `docs/FUNDER_SHORTLIST_MATCHING.md`), send. Emails are CC’d to subs@onedaycap.com; a summary email goes to subs@onedaycap.com with recipient list (name, email, phone, To/CC, shortlist match).
+- **What next (funder):** Optional — protect `/submit-to-funders` (e.g. secret query param or auth). Later — record replies/declines/offers in submission_events, enter funder_offers and funded_deals, commission_ledger.
+
+---
+
 ## 1. Merchant DB – run SQL in order (if not already done)
 
 In **Merchant DB** → SQL Editor, run these once:

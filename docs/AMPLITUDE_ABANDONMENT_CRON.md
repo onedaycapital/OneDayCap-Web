@@ -26,7 +26,7 @@ Run the migration in Supabase SQL Editor:
 
 | Path | Schedule | Purpose |
 |------|---------|--------|
-| `/api/cron/abandonment-nudges` | Every 5 min | Send 30-min and 24-hour abandonment nudges |
+| `/api/cron/abandonment-nudges` | Daily 16:00 UTC (10am CT) on Hobby; every 5 min on Pro | Send 30-min and 24-hour abandonment nudges |
 | `/api/cron/followup-15d` | Daily 14:00 UTC | Send 15-day follow-up to non-submitters who visited |
 | `/api/cron/funnel-digest-noon` | Daily 18:00 UTC (≈ noon CT) | Email subs@onedaycap.com list of incomplete funnel |
 | `/api/cron/funnel-digest-3pm` | Daily 21:00 UTC (≈ 3pm CT) | Same digest at 3pm CT |
@@ -92,7 +92,63 @@ On Hobby, the **every-5‑minute** schedule is **invalid**. Vercel may reject it
 - Ensure **CRON_SECRET** exists and is set for **Production** (and Preview if you test there). If it’s missing or wrong, the cron route returns **401 Unauthorized** and no emails are sent.
 - Vercel automatically sends `Authorization: Bearer <CRON_SECRET>` when invoking cron jobs; the route checks this. Same value must be in the env and in the header.
 
-### 9.4 View cron logs
+### 9.4 Test cron after a redeploy
+
+To confirm the deployed build has the cron (including backfill + 30m/24h nudges):
+
+1. **Abandonment cron (auth + logic):**  
+   `curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer YOUR_CRON_SECRET" "https://www.onedaycap.com/api/cron/abandonment-nudges"`  
+   Expect **200**. To see the JSON body:  
+   `curl -s -H "Authorization: Bearer YOUR_CRON_SECRET" "https://www.onedaycap.com/api/cron/abandonment-nudges"`  
+   Expect `{"ok":true,"sent_30m":N,"sent_24h":N}` (N may be 0 if no candidates).
+
+2. **Optional — test nudge email delivery:**  
+   `curl -s -H "Authorization: Bearer YOUR_CRON_SECRET" "https://www.onedaycap.com/api/cron/send-test-nudges"`  
+   Expect 200 and test emails at the addresses in `send-test-nudges` (e.g. sree@uncha.us).
+
+3. **Logs:** Vercel → **Deployments** → latest → **Logs**, or **Settings** → **Cron Jobs** → **View Logs**. Look for `[cron:abandonment-nudges]` (Starting run, Backfilled sessions…, Candidates loaded, Run complete).
+
+If you get **401**, `CRON_SECRET` in Vercel doesn’t match or isn’t set for Production. If **404**, the route isn’t deployed (wrong deployment or path).
+
+### 9.5 View cron logs (Vercel UI)
 
 - Vercel → **Settings** → **Cron Jobs** → open a job → **View Logs**.
 - You’ll see whether the job was invoked and the **response** (e.g. 200 = success, 401 = auth failure, 404 = route not found, 500 = server error). Use this to see if the cron is being called and why it might not be sending emails.
+
+### 9.6 Deploy Hook (when Git push doesn’t trigger a deployment)
+
+If pushes to `main` don’t create a deployment, use a **Deploy Hook** to trigger a build manually:
+
+1. Vercel → Project → **Settings** → **Git** → scroll to **Deploy Hooks**.
+2. **Name:** e.g. `Deploy main` (required — don’t leave empty).
+3. **Branch:** `main` → **Create Hook**.
+4. **Copy the URL** Vercel shows — it’s only shown once. Save it somewhere safe (e.g. a private doc or password manager). You can also paste it below for your team.
+5. To deploy: open the URL in a browser or run `curl "YOUR_HOOK_URL"`. That starts a new deployment of the latest `main`.
+
+**Deploy Hook URL (paste after creating):**
+https://api.vercel.com/v1/integrations/deploy/prj_8gHeDyq2j1pQDnJlMI0xQ4e8H4AB/7l2cSzHdU0
+```
+# Replace with your URL from Vercel → Settings → Git → Deploy Hooks
+# https://api.vercel.com/v1/integrations/deploy/prj_XXXX/XXXX
+```
+
+### 9.7 Unresolved: Git push not triggering deployment
+
+**Issue:** Pushes to `main` (onedaycapital/OneDayCap-Web) do not create a deployment on Vercel. Workaround: use a Deploy Hook (§9.6) or manual Redeploy in the dashboard.
+
+**Already tried:**
+- Reconnected the Git repository in Vercel (Settings → Git → Disconnect → Connect).
+- Confirmed GitHub App has access to all repositories and deployment permissions.
+- Set Ignored Build Step to custom `exit 1` so builds are not skipped.
+- GitHub repo **Webhooks** page is empty (no repo-level webhook; Vercel uses GitHub App).
+
+**Likely cause:** The event from GitHub (push to `main`) is not reaching Vercel, or Vercel is not creating a deployment for this project when it receives it. Possible reasons: project under a different Vercel team than the one that installed the GitHub App; App installed for a different user/org; or a Vercel-side bug.
+
+**Next steps to resolve:**
+1. **Confirm project and App are same account:** In Vercel, check which **team/account** the project belongs to. In GitHub → Settings → Integrations → GitHub Apps → Vercel, check which account installed it. They must match; if not, connect the repo from the correct Vercel team.
+2. **Create a new Vercel project:** Import the same repo (onedaycapital/OneDayCap-Web) as a **new** project. If the new project auto-deploys on push, the link works and the issue is specific to the original project; you can switch the domain to the new project or use it to compare settings.
+3. **Contact Vercel support:** Provide project name, repo, and that “push to main does not create a deployment despite reconnecting Git and correct GitHub App permissions.” They can check server-side why the deployment isn’t being created.
+
+**Version gap:** If `git push origin main` says "Everything up-to-date", your local/remote `main` is already current. Production may still be on an older commit (e.g. last successful Git-triggered deploy). Check Vercel → Deployments → Production deployment → commit SHA vs `git rev-parse origin/main`. The cron routes exist on `main` from commit 50bbe73 onward; if Production is before that, cron will 404 until a deployment from current `main` is live.
+
+**Deploy from CLI (bypasses Git + hook):** From the repo root, run `vercel --prod` (after `npm i -g vercel` and `vercel link` if needed). This builds and deploys the current local code to Production and gets the latest commit (including cron) live without relying on push or Deploy Hook.
