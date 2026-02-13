@@ -360,13 +360,13 @@ export function ApplicationForm() {
     const step4Err = validateStep4(formData.personal, formData.creditOwnership);
     if (step4Err) {
       setStepError(step4Err);
-      trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 4, step_name: "Credit, Terms & Sign", validation_error: step4Err });
+      trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 4, step_name: "Owner & Signatures", validation_error: step4Err });
       return;
     }
     const signOffErr = validateStep4SignOff(formData.signature, formData.personal);
     if (signOffErr) {
       setStepError(signOffErr);
-      trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 4, step_name: "Credit, Terms & Sign", validation_error: signOffErr });
+      trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 4, step_name: "Owner & Signatures", validation_error: signOffErr });
       return;
     }
     if (savingStep4) return;
@@ -387,7 +387,7 @@ export function ApplicationForm() {
         setFormData((prev) => ({ ...prev, savedApplicationId: result.applicationId }));
         const email = formData.personal.email.trim();
         if (email) sendSessionEvent({ email, event: "step_complete", step: 5 });
-        trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 4, to_step: 5, step_name: "Credit, Terms & Sign" });
+        trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 4, to_step: 5, step_name: "Owner & Signatures" });
         if (email) {
           const abandonedPayload = toAbandonedPayload(5, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature);
           await upsertAbandonedProgress(email, 5, abandonedPayload);
@@ -432,7 +432,7 @@ export function ApplicationForm() {
         if (result.success) {
           const email = formData.personal.email?.trim();
           if (email) sendSessionEvent({ email, event: "submit", step: 5, application_id: result.applicationId });
-          trackApplicationForm(ApplicationFormEvents.FormSubmitted, { application_id: result.applicationId, step: 5, step_name: "Documents" });
+          trackApplicationForm(ApplicationFormEvents.FormSubmitted, { application_id: result.applicationId, step: 5, step_name: "Upload Documents" });
           if (result.additionalDetails || result.pdfBase64) {
             const safeName =
               (formData.business.businessName || "Application").replace(/[^a-zA-Z0-9\s.-]/g, "").trim() || "Application";
@@ -454,7 +454,7 @@ export function ApplicationForm() {
           router.push("/processing-application");
           return;
         } else {
-          trackApplicationForm(ApplicationFormEvents.FormSubmitFailed, { error: result.error, step_name: "Documents" });
+          trackApplicationForm(ApplicationFormEvents.FormSubmitFailed, { error: result.error, step_name: "Upload Documents" });
           setSubmitError(result.error);
         }
       } catch (actionErr) {
@@ -603,7 +603,7 @@ export function ApplicationForm() {
                 <p className="mt-2 text-xs text-red-700">Check your connection and try again. If this persists, contact subs@onedaycap.com with the message above.</p>
               </div>
             )}
-            <form onSubmit={handleSubmit} className="mt-8">
+            <form onSubmit={handleSubmit} className="mt-8" data-form-version="step4-save-next-step5-submit-docs">
               <div className="min-h-[320px]">
                 {currentStep === 1 && (
                   <Step3FinancialFunding
