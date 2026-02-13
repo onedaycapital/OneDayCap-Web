@@ -612,7 +612,7 @@ export function ApplicationForm() {
             {restoredFromAbandoned && (
               <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
                 <p className="font-medium">Welcome back</p>
-                <p className="mt-1 text-emerald-800">We&apos;ve restored your previous progress. You&apos;ll go through each step in order with your data prefilled—review and click Next to continue.</p>
+                <p className="mt-1 text-emerald-800">We&apos;ve restored your previous progress. You&apos;ll go through each step in order with your data prefilled - review and click Next to continue.</p>
               </div>
             )}
             {stepError && (

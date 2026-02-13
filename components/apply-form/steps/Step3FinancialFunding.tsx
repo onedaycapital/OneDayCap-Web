@@ -170,7 +170,7 @@ export function Step3FinancialFunding({ data, onChange, highlightEmpty }: Props)
             <div className="relative">
               <p className="text-xs font-semibold uppercase tracking-wider text-amber-900/80">Your guaranteed gift</p>
               <h3 className="font-heading mt-1 text-lg font-bold text-white drop-shadow-sm">
-                Free Gift — {hasFundingAmount ? gift.label : "Enter your funding amount above to see your gift"}
+                Free Gift - {hasFundingAmount ? gift.label : "Enter your funding amount above to see your gift"}
               </h3>
               <p className="mt-1 text-sm text-white/95">
                 {hasFundingAmount

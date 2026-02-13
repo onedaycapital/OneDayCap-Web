@@ -143,7 +143,7 @@ export function ProcessingApplicationSummary() {
           <div className="absolute right-2 top-2 text-3xl opacity-90" style={{ filter: "drop-shadow(0 0 6px rgba(255,255,255,0.9)) drop-shadow(0 0 12px rgba(255,255,255,0.6))" }} aria-hidden>🎁</div>
           <div className="relative">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-900/80">Your guaranteed gift</p>
-            <p className="mt-1 font-heading text-sm font-bold text-white drop-shadow-sm">Free Gift — {gift.label}</p>
+            <p className="mt-1 font-heading text-sm font-bold text-white drop-shadow-sm">Free Gift - {gift.label}</p>
             <p className="mt-0.5 text-[10px] text-white/95">Complete funding to receive this reward.</p>
           </div>
         </div>

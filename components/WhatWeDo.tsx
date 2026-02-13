@@ -21,7 +21,7 @@ export function WhatWeDo() {
         </h2>
         <p className="text-lg text-slate-600 leading-relaxed">
           OneDay Capital specializes in fast, short-term working capital for
-          businesses that need liquidity now — not weeks from now.
+          businesses that need liquidity now - not weeks from now.
         </p>
         <p className="text-slate-600 leading-relaxed">
           We assess real cash flow, act quickly, and structure funding that

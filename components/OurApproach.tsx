@@ -15,7 +15,7 @@ export function OurApproach() {
         </h2>
         <p className="text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto">
           We don&apos;t push one product. We match your business with funding
-          options that make sense — fast, transparent, and aligned with your
+          options that make sense - fast, transparent, and aligned with your
           cash flow.
         </p>
       </div>

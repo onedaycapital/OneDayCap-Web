@@ -456,7 +456,7 @@ The attached materials contain confidential financial and personal information p
   }
 
   if (sentToList.length > 0) {
-    const summarySubject = `Funder submission summary: ${businessName} — sent to ${sentToList.length} funder(s)`;
+    const summarySubject = `Funder submission summary: ${businessName} - sent to ${sentToList.length} funder(s)`;
     const summaryRows = sentToList
       .map(
         (s) =>

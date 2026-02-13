@@ -108,7 +108,7 @@ export function SubmitToFundersForm() {
           ) : (
             applications.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.businessName} — {new Date(a.createdAt).toLocaleDateString()} ({a.id.slice(0, 8)}…)
+                {a.businessName} - {new Date(a.createdAt).toLocaleDateString()} ({a.id.slice(0, 8)}…)
               </option>
             ))
           )}

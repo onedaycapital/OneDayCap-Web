@@ -9,7 +9,7 @@ const STEPS = [
   },
   {
     title: "Cash-Flow Review",
-    body: "Your business is evaluated based on actual performance — not your personal credit score.",
+    body: "Your business is evaluated based on actual performance - not your personal credit score.",
   },
   {
     title: "Capital Arranged",

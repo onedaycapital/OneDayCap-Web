@@ -17,7 +17,7 @@ export function FinalCTA() {
       />
       <div className="relative max-w-2xl mx-auto text-center space-y-8">
         <h2 className="font-heading text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight">
-          Get Capital Moving — Today
+          Get Capital Moving - Today
         </h2>
         <p className="text-slate-300 text-lg">
           See how much funding your business may qualify for in minutes.

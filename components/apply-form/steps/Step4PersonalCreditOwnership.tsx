@@ -272,7 +272,7 @@ export function Step4PersonalCreditOwnership({ data, onChange, personal, onPerso
 
       <div className="border-t border-slate-200 pt-8">
         <h3 className="font-heading text-xl font-bold text-slate-800">
-          Agreement — Sign &amp; Conclude
+          Agreement - Sign &amp; Conclude
         </h3>
         <p className="mt-1 text-slate-600 text-sm">
           Sign below to confirm the information provided is accurate. Click Save &amp; Next to save your application and continue to document upload.
