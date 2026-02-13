@@ -41,6 +41,8 @@ where name = 'Eminent Funding'
 order by created_at desc
 limit 1;
 
+update public.funders set iso_agreement_signed = true where name = 'Eminent Funding';
+
 -- -----------------------------------------------------------------------------
 -- 2) Pivot Funding Group – $10K–$50K monthly revenue, smaller high-risk
 -- -----------------------------------------------------------------------------
@@ -77,3 +79,5 @@ from public.funders
 where name = 'Pivot Funding Group'
 order by created_at desc
 limit 1;
+
+update public.funders set iso_agreement_signed = true where name = 'Pivot Funding Group';

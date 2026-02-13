@@ -12,6 +12,8 @@ export interface FunderOption {
   name: string;
   email: string | null;
   relationshipStatus: string;
+  /** True when a signed ISO agreement is on file; only these are included in auto-match. */
+  isoAgreementSigned: boolean;
   /** True when this funder's guidelines match the application (shortlist). */
   matched?: boolean;
 }
@@ -101,8 +103,8 @@ export async function getMatchedFunderIds(applicationId: string): Promise<string
     if (g.max_funding != null && appFunding != null && appFunding > g.max_funding) continue;
     matched.push(g.funder_id);
   }
-  const result = Array.from(new Set(matched));
-  if (result.length === 0) {
+  const matchedIds = Array.from(new Set(matched));
+  if (matchedIds.length === 0) {
     console.warn("[funder-match] no funders passed filters", {
       applicationId,
       monthly_revenue_raw: app.monthly_revenue,
@@ -110,8 +112,16 @@ export async function getMatchedFunderIds(applicationId: string): Promise<string
       appFunding,
       guidelineCount: guidelines.length,
     });
+    return [];
   }
-  return result;
+
+  const { data: signedFunders, error: signedErr } = await supabase
+    .from("funders")
+    .select("id")
+    .in("id", matchedIds)
+    .eq("iso_agreement_signed", true);
+  if (signedErr || !signedFunders?.length) return [];
+  return signedFunders.map((f) => f.id);
 }
 
 /**
@@ -122,7 +132,7 @@ export async function listFundersForSubmit(applicationId?: string): Promise<Fund
   const supabase = getSupabaseServer();
   const { data: funders, error: fundersError } = await supabase
     .from("funders")
-    .select("id, name, relationship_status")
+    .select("id, name, relationship_status, iso_agreement_signed")
     .order("relationship_status", { ascending: true })
     .order("name");
 
@@ -147,6 +157,7 @@ export async function listFundersForSubmit(applicationId?: string): Promise<Fund
     name: f.name,
     email: emailByFunder.get(f.id) ?? null,
     relationshipStatus: f.relationship_status ?? "active",
+    isoAgreementSigned: f.iso_agreement_signed === true,
     matched: applicationId ? matchedSet.has(f.id) : undefined,
   }));
 }

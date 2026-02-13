@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { DocumentUploads, SignatureAudit, UploadedFileMetadata } from "../types";
-import type { PersonalInfo } from "../types";
+import type { DocumentUploads, UploadedFileMetadata } from "../types";
 import { ACCEPTED_FILE_TYPES } from "../types";
-import { SignaturePad } from "../SignaturePad";
 import {
   uploadFileToSupabase,
   uploadMultipleFiles,
@@ -17,12 +15,7 @@ import { deleteUploadedFile } from "@/app/actions/cleanup-uploads";
 
 interface Props {
   documents: DocumentUploads;
-  signature: SignatureAudit;
   onDocumentsChange: (documents: DocumentUploads) => void;
-  onSignatureChange: (signature: SignatureAudit) => void;
-  personal: PersonalInfo;
-  onPersonalChange: (data: PersonalInfo) => void;
-  onSignConfirm?: () => void;
 }
 
 interface FileUploadState {
@@ -31,12 +24,7 @@ interface FileUploadState {
 
 export function Step5DocumentsAndSignature({
   documents,
-  signature,
   onDocumentsChange,
-  onSignatureChange,
-  personal,
-  onPersonalChange,
-  onSignConfirm,
 }: Props) {
   const [uploadStates, setUploadStates] = useState<FileUploadState>({});
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -165,17 +153,6 @@ export function Step5DocumentsAndSignature({
       }
     },
     [documents, onDocumentsChange]
-  );
-
-  const handleSignatureData = useCallback(
-    (dataUrl: string | null) => {
-      const signedAt = dataUrl ? new Date().toISOString() : null;
-      const auditId = dataUrl
-        ? `audit-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-        : null;
-      onSignatureChange({ signatureDataUrl: dataUrl, signedAt, auditId });
-    },
-    [onSignatureChange]
   );
 
   const renderUploadProgress = (fileName: string) => {
@@ -365,90 +342,6 @@ export function Step5DocumentsAndSignature({
           {uploadStates["driversLicense"] &&
             renderUploadProgress("driversLicense")}
         </div>
-      </div>
-
-      <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-        <div className="space-y-3 text-slate-700 text-sm leading-relaxed">
-          <p>
-            By submitting this application, each of the above listed business and
-            business owner/officer (individually and collectively, &quot;you&quot;)
-            authorize OneDay Capital LLC and each of its representatives,
-            successors, assigns and designees (&quot;Recipients&quot;) that may be
-            involved with or acquire commercial loans having daily repayment
-            features or purchases of future receivables including Merchant Cash
-            Advance transactions, including without limitation the application
-            therefor (collectively, &quot;Transactions&quot;) to obtain consumer or
-            personal, business and investigative reports and other information about
-            you, including credit card processor statements and bank statements,
-            from one or more consumer reporting agencies, such as TransUnion,
-            Experian and Equifax, and from other credit bureaus, banks, creditors
-            and other third parties. You also authorize OneDay Capital LLC to
-            transmit this application form, along with any of the foregoing
-            information obtained in connection with this application, to any or all
-            of the Recipients for the foregoing purposes. You also consent to the
-            release, by any creditor or financial institution, of any information
-            relating to any of you, to OneDay Capital LLC and to each of the
-            Recipients, on its own behalf.
-          </p>
-          <p>
-            <strong>
-              CONSENT TO TELEPHONE CALLS, SMS, WhatsApp, iMessaging:
-            </strong>{" "}
-            You expressly consent to receiving marketing and other calls and
-            messages, to landline, wireless or similar devices, including
-            auto-dialed and pre-recorded message calls, and SMS messages (including
-            text messages) from recipients, at telephone numbers that you have
-            provided. Message and data rates may apply. Your consent to receive
-            marketing calls is not required for your application. If you do not
-            consent, do not provide your phone number.
-          </p>
-          <p>
-            <strong>CONSENT TO ELECTRONIC DISCLOSURE:</strong> You expressly
-            consent to transactions and disclosures with recipients online and
-            electronically. Disclosure will be provided to you either on the
-            screen, on recipients&apos; website or via electronic mail to the email
-            address you provided.
-          </p>
-        </div>
-        <label className="flex cursor-pointer items-start gap-3">
-          <input
-            type="checkbox"
-            checked={personal.smsConsent}
-            onChange={(e) =>
-              onPersonalChange({ ...personal, smsConsent: e.target.checked })
-            }
-            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-[var(--brand-blue)] focus:ring-[var(--brand-blue)]"
-          />
-          <span className="text-sm font-medium text-slate-800">
-            I have read and agree to the terms and consents above.{" "}
-            <span className="text-red-600">*</span>
-          </span>
-        </label>
-      </div>
-
-      <div className="border-t border-slate-200 pt-8">
-        <h3 className="font-heading text-xl font-bold text-slate-800">
-          Agreement — Sign &amp; Conclude
-        </h3>
-        <p className="mt-1 text-slate-600 text-sm">
-          Sign below to confirm the information provided is accurate and to
-          conclude your application.
-        </p>
-        <div className="mt-4">
-          <label className="mb-2 block text-sm font-medium text-slate-700">
-            Your signature <span className="text-red-600">*</span>
-          </label>
-          <SignaturePad
-            onSignatureChange={handleSignatureData}
-            signedAt={signature.signedAt}
-            auditId={signature.auditId}
-          />
-        </div>
-        {signature.signatureDataUrl && onSignConfirm && (
-          <p className="mt-2 text-sm text-emerald-700">
-            Signature captured. Submit the form to complete your application.
-          </p>
-        )}
       </div>
     </div>
   );

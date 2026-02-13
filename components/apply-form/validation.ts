@@ -43,12 +43,20 @@ export function validateStep4(
   return null;
 }
 
-export function validateStep5(
-  _documents: ApplicationFormData["documents"],
+/** Validates terms consent + signature (used on step 4 "Sign & Conclude"). */
+export function validateStep4SignOff(
   signature: ApplicationFormData["signature"],
   personal: ApplicationFormData["personal"]
 ): string | null {
   if (!personal.smsConsent) return "You must agree to the terms and consents above before signing.";
   if (!(signature.signatureDataUrl || "").trim()) return "Signature is required.";
   return null;
+}
+
+export function validateStep5(
+  _documents: ApplicationFormData["documents"],
+  signature: ApplicationFormData["signature"],
+  personal: ApplicationFormData["personal"]
+): string | null {
+  return validateStep4SignOff(signature, personal);
 }

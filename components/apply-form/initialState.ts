@@ -50,6 +50,6 @@ export const STEP_SECTIONS: { id: 1 | 2 | 3 | 4 | 5; title: string; subtitle: st
   { id: 1, title: "Financial and Funding", subtitle: "Funding and revenue" },
   { id: 2, title: "Email", subtitle: "We'll look up your details" },
   { id: 3, title: "Business Information", subtitle: "Your business details" },
-  { id: 4, title: "Credit and Ownership", subtitle: "Contact & ownership details" },
-  { id: 5, title: "Documents and Agreement", subtitle: "Upload, terms & sign" },
+  { id: 4, title: "Credit, Terms & Sign", subtitle: "Ownership, agreement & signature" },
+  { id: 5, title: "Documents", subtitle: "Upload your documents" },
 ];

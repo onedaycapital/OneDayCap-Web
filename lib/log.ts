@@ -39,6 +39,7 @@ export const log = {
 /** Scopes used across the app (search for these in Vercel logs). */
 export const LOG_SCOPE = {
   CRON_ABANDONMENT: "cron:abandonment-nudges",
+  CRON_PENDING_DOCUMENTS: "cron:pending-documents-reminder",
   CRON_FOLLOWUP_15D: "cron:followup-15d",
   CRON_FUNNEL_NOON: "cron:funnel-digest-noon",
   CRON_FUNNEL_3PM: "cron:funnel-digest-3pm",

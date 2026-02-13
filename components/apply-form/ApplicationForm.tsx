@@ -9,7 +9,7 @@ import { Step2BusinessInfo } from "./steps/Step2BusinessInfo";
 import { Step3FinancialFunding } from "./steps/Step3FinancialFunding";
 import { Step4PersonalCreditOwnership } from "./steps/Step4PersonalCreditOwnership";
 import { Step5DocumentsAndSignature } from "./steps/Step5DocumentsAndSignature";
-import { submitApplication } from "@/app/actions/submit-application";
+import { saveApplicationAndPdf, submitDocuments } from "@/app/actions/submit-application";
 import { lookupMerchantByEmail } from "@/app/actions/lookup-merchant";
 import { getAbandonedProgress, upsertAbandonedProgress } from "@/app/actions/abandoned-progress";
 import { sendFundingLeadNotification } from "@/app/actions/send-funding-lead-notification";
@@ -19,7 +19,7 @@ import {
   validateStep2,
   validateStep3,
   validateStep4,
-  validateStep5,
+  validateStep4SignOff,
 } from "./validation";
 import {
   setAnalyticsUserId,
@@ -29,7 +29,7 @@ import {
   getCampaignEmail,
 } from "@/lib/analytics";
 import { sendSessionEvent } from "@/lib/session-event-client";
-import { RESUME_EMAIL_KEY, RESUME_STEP_KEY } from "@/lib/resume-storage";
+import { RESUME_EMAIL_KEY, RESUME_STEP_KEY, RESUME_APPLICATION_ID_KEY } from "@/lib/resume-storage";
 
 const TOTAL_STEPS = 5;
 const AUTOSAVE_DEBOUNCE_MS = 1800;
@@ -76,6 +76,7 @@ export function ApplicationForm() {
   const [stepError, setStepError] = useState<string | null>(null);
   const [hadLookupResult, setHadLookupResult] = useState(false);
   const [restoredFromAbandoned, setRestoredFromAbandoned] = useState(false);
+  const [savingStep4, setSavingStep4] = useState(false);
   const currentStep = formData.step;
 
   // Prefill email when user came from a campaign link that included email (?rid=...&email=... or &e=...).
@@ -91,12 +92,24 @@ export function ApplicationForm() {
     }
   }, []);
 
-  // Prefill from resume link: /apply/resume?t=... stores email and step in sessionStorage
+  // Prefill from resume link: /apply/resume?t=... or /apply/documents?t=... stores email, step, and optionally applicationId in sessionStorage
   useEffect(() => {
     try {
       const resumeEmail = sessionStorage.getItem(RESUME_EMAIL_KEY)?.trim();
       const resumeStep = sessionStorage.getItem(RESUME_STEP_KEY);
-      if (resumeEmail && resumeStep) {
+      const resumeApplicationId = sessionStorage.getItem(RESUME_APPLICATION_ID_KEY)?.trim();
+      if (resumeApplicationId) {
+        // Documents reminder link: go to step 5 with savedApplicationId
+        setFormData((prev) => ({
+          ...prev,
+          step: 5,
+          savedApplicationId: resumeApplicationId,
+          ...(resumeEmail ? { personal: { ...prev.personal, email: resumeEmail } } : {}),
+        }));
+        sessionStorage.removeItem(RESUME_APPLICATION_ID_KEY);
+        sessionStorage.removeItem(RESUME_EMAIL_KEY);
+        sessionStorage.removeItem(RESUME_STEP_KEY);
+      } else if (resumeEmail && resumeStep) {
         const step = Math.min(5, Math.max(1, parseInt(resumeStep, 10) || 1)) as StepId;
         setFormData((prev) => ({
           ...prev,
@@ -340,15 +353,65 @@ export function ApplicationForm() {
     if (currentStep > 1) setStep((currentStep - 1) as StepId);
   }, [currentStep, setStep]);
 
+  /** Step 4: validate, save application + PDF, then go to step 5. */
+  const handleSaveAndNext = useCallback(async () => {
+    setSubmitError(null);
+    setStepError(null);
+    const step4Err = validateStep4(formData.personal, formData.creditOwnership);
+    if (step4Err) {
+      setStepError(step4Err);
+      trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 4, step_name: "Credit, Terms & Sign", validation_error: step4Err });
+      return;
+    }
+    const signOffErr = validateStep4SignOff(formData.signature, formData.personal);
+    if (signOffErr) {
+      setStepError(signOffErr);
+      trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 4, step_name: "Credit, Terms & Sign", validation_error: signOffErr });
+      return;
+    }
+    if (savingStep4) return;
+    setSavingStep4(true);
+    try {
+      const payload = {
+        personal: formData.personal,
+        business: formData.business,
+        financial: formData.financial,
+        creditOwnership: formData.creditOwnership,
+        signature: formData.signature,
+        documents: formData.documents,
+      };
+      const fd = new FormData();
+      fd.append("payload", JSON.stringify(payload));
+      const result = await saveApplicationAndPdf(fd);
+      if (result.success) {
+        setFormData((prev) => ({ ...prev, savedApplicationId: result.applicationId }));
+        const email = formData.personal.email.trim();
+        if (email) sendSessionEvent({ email, event: "step_complete", step: 5 });
+        trackApplicationForm(ApplicationFormEvents.StepCompleted, { from_step: 4, to_step: 5, step_name: "Credit, Terms & Sign" });
+        if (email) {
+          const abandonedPayload = toAbandonedPayload(5, formData.personal, formData.business, formData.financial, formData.creditOwnership, formData.signature);
+          await upsertAbandonedProgress(email, 5, abandonedPayload);
+        }
+        setStep(5);
+      } else {
+        setStepError(result.error);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save. Please try again.";
+      setStepError(msg);
+    } finally {
+      setSavingStep4(false);
+    }
+  }, [formData, savingStep4]);
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      if (currentStep !== 5) return;
       setSubmitError(null);
       setStepError(null);
-      const step5Err = validateStep5(formData.documents, formData.signature, formData.personal);
-      if (step5Err) {
-        setSubmitError(step5Err);
-        trackApplicationForm(ApplicationFormEvents.StepValidationFailed, { step: 5, step_name: "Documents & Agreement", validation_error: step5Err });
+      if (!formData.savedApplicationId) {
+        setSubmitError("Please complete Step 4 (Sign & Conclude) first. Go back and click Save & Next.");
         return;
       }
       if (submitting) return;
@@ -360,24 +423,16 @@ export function ApplicationForm() {
           financial: formData.financial,
           creditOwnership: formData.creditOwnership,
           signature: formData.signature,
-          documents: formData.documents, // Include uploaded file metadata
+          documents: formData.documents,
+          savedApplicationId: formData.savedApplicationId,
         };
         const fd = new FormData();
         fd.append("payload", JSON.stringify(payload));
-        
-        let result;
-        try {
-          result = await submitApplication(fd);
-        } catch (actionErr) {
-          const msg = actionErr instanceof Error ? actionErr.message : String(actionErr);
-          trackApplicationForm(ApplicationFormEvents.FormSubmitFailed, { error: msg, step_name: "Documents & Agreement" });
-          setSubmitError(msg || "Submission failed. Please try again or contact subs@onedaycap.com.");
-          return;
-        }
+        const result = await submitDocuments(fd);
         if (result.success) {
           const email = formData.personal.email?.trim();
           if (email) sendSessionEvent({ email, event: "submit", step: 5, application_id: result.applicationId });
-          trackApplicationForm(ApplicationFormEvents.FormSubmitted, { application_id: result.applicationId, step: 5, step_name: "Documents & Agreement" });
+          trackApplicationForm(ApplicationFormEvents.FormSubmitted, { application_id: result.applicationId, step: 5, step_name: "Documents" });
           if (result.additionalDetails || result.pdfBase64) {
             const safeName =
               (formData.business.businessName || "Application").replace(/[^a-zA-Z0-9\s.-]/g, "").trim() || "Application";
@@ -395,19 +450,21 @@ export function ApplicationForm() {
             } catch {
               // ignore
             }
-            // Do not open PDF in a new tab; user stays on processing-application page and can open/download from the tile there.
           }
           router.push("/processing-application");
           return;
         } else {
-          trackApplicationForm(ApplicationFormEvents.FormSubmitFailed, { error: result.error, step_name: "Documents & Agreement" });
+          trackApplicationForm(ApplicationFormEvents.FormSubmitFailed, { error: result.error, step_name: "Documents" });
           setSubmitError(result.error);
         }
+      } catch (actionErr) {
+        const msg = actionErr instanceof Error ? actionErr.message : String(actionErr);
+        setSubmitError(msg || "Submission failed. Please try again or contact subs@onedaycap.com.");
       } finally {
         setSubmitting(false);
       }
     },
-    [formData, submitting]
+    [currentStep, formData, submitting]
   );
 
   return (
@@ -584,22 +641,18 @@ export function ApplicationForm() {
                     onPersonalChange={(personal) =>
                       setFormData((prev) => ({ ...prev, personal }))
                     }
+                    signature={formData.signature}
+                    onSignatureChange={(signature) =>
+                      setFormData((prev) => ({ ...prev, signature }))
+                    }
                     highlightEmpty={hadLookupResult}
                   />
                 )}
                 {currentStep === 5 && (
                   <Step5DocumentsAndSignature
                     documents={formData.documents}
-                    signature={formData.signature}
                     onDocumentsChange={(documents) =>
                       setFormData((prev) => ({ ...prev, documents }))
-                    }
-                    onSignatureChange={(signature) =>
-                      setFormData((prev) => ({ ...prev, signature }))
-                    }
-                    personal={formData.personal}
-                    onPersonalChange={(personal) =>
-                      setFormData((prev) => ({ ...prev, personal }))
                     }
                   />
                 )}
@@ -618,7 +671,7 @@ export function ApplicationForm() {
                   )}
                 </div>
                 <div className="flex gap-3">
-                  {currentStep < TOTAL_STEPS ? (
+                  {currentStep < 4 ? (
                     <button
                       type="button"
                       onClick={() => goNext()}
@@ -627,13 +680,22 @@ export function ApplicationForm() {
                     >
                       {lookingUp ? "Looking up your details…" : "Next"}
                     </button>
+                  ) : currentStep === 4 ? (
+                    <button
+                      type="button"
+                      onClick={handleSaveAndNext}
+                      disabled={savingStep4}
+                      className="rounded-lg bg-[var(--brand-blue)] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-blue-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-blue)] focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                      {savingStep4 ? "Saving…" : "Save & Next"}
+                    </button>
                   ) : (
                     <button
                       type="submit"
                       disabled={submitting}
                       className="rounded-lg bg-[var(--brand-blue)] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-blue-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-blue)] focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      {submitting ? "Submitting…" : "Submit Application"}
+                      {submitting ? "Submitting…" : "Submit Documents"}
                     </button>
                   )}
                 </div>

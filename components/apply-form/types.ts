@@ -69,6 +69,8 @@ export interface ApplicationFormData {
   creditOwnership: PersonalCreditOwnership;
   documents: DocumentUploads;
   signature: SignatureAudit;
+  /** Set after step 4 "Save & Next" for use in step 5 submit. */
+  savedApplicationId?: string;
 }
 
 export const ACCEPTED_FILE_TYPES = ".pdf,.jpg,.jpeg,.gif,.csv";

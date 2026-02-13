@@ -148,6 +148,9 @@ export function SubmitToFundersForm() {
                   className="rounded border-slate-300 text-[var(--brand-blue)] focus:ring-[var(--brand-blue)]"
                 />
                 <span className="text-sm font-medium text-slate-800">{f.name}</span>
+                {f.isoAgreementSigned && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-medium">ISO signed</span>
+                )}
                 {f.matched && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">Shortlist</span>
                 )}
@@ -161,6 +164,7 @@ export function SubmitToFundersForm() {
             ))
           )}
         </div>
+        <p className="mt-1.5 text-xs text-slate-500">Auto-match on application submit only sends to funders with a signed ISO agreement (marked above).</p>
       </div>
 
       {message && (

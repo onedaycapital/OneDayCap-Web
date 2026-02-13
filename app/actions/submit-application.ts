@@ -79,6 +79,11 @@ export type SubmitResult =
   | { success: true; applicationId: string; pdfBase64?: string; additionalDetails?: AdditionalDetailsRow[] }
   | { success: false; error: string };
 
+/** Result of saving application + PDF at step 4 (before documents). */
+export type SaveApplicationResult =
+  | { success: true; applicationId: string }
+  | { success: false; error: string };
+
 const LOG_PREFIX = "[submit]";
 
 function escapeHtml(s: string): string {
@@ -158,6 +163,300 @@ async function sendFunderMatchSummaryError(
   });
 }
 
+/** Build DB row from payload (shared by save and full submit). */
+function payloadToRow(payload: SubmitPayload): Record<string, unknown> {
+  return {
+    first_name: payload.personal.firstName,
+    last_name: payload.personal.lastName,
+    email: payload.personal.email.trim(),
+    phone: payload.personal.phone.trim(),
+    sms_consent: payload.personal.smsConsent ?? false,
+    business_name: payload.business.businessName.trim(),
+    dba: payload.business.dba?.trim() || null,
+    type_of_business: payload.business.typeOfBusiness.trim(),
+    start_date_of_business: payload.business.startDateOfBusiness.trim(),
+    ein: payload.business.ein.trim(),
+    address: payload.business.address.trim(),
+    city: payload.business.city.trim(),
+    state: payload.business.state.trim(),
+    zip: payload.business.zip.trim(),
+    industry: payload.business.industry.trim(),
+    monthly_revenue: payload.financial.monthlyRevenue.trim(),
+    funding_request: payload.financial.fundingRequest.trim(),
+    use_of_funds: payload.financial.useOfFunds.trim(),
+    ssn: payload.creditOwnership.ssn.trim(),
+    owner_address: payload.creditOwnership.address?.trim() || null,
+    owner_city: payload.creditOwnership.city?.trim() || null,
+    owner_state: payload.creditOwnership.state?.trim() || null,
+    owner_zip: payload.creditOwnership.zip?.trim() || null,
+    ownership_percent: payload.creditOwnership.ownershipPercent?.trim() || null,
+    signature_data_url: payload.signature.signatureDataUrl || null,
+    signed_at: payload.signature.signedAt || null,
+    audit_id: payload.signature.auditId || null,
+  };
+}
+
+/**
+ * Step 4: Save application and generate/store PDF. Does not link documents or send emails.
+ * Returns applicationId for step 5 (Submit Documents).
+ */
+export async function saveApplicationAndPdf(formData: FormData): Promise<SaveApplicationResult> {
+  try {
+    const payloadRaw = formData.get("payload");
+    if (typeof payloadRaw !== "string") {
+      return { success: false, error: "Missing form payload." };
+    }
+    const payload: SubmitPayload = JSON.parse(payloadRaw);
+    const supabase = getSupabaseServer();
+
+    const row = {
+      ...payloadToRow(payload),
+      submission_status: "pending_documents",
+    };
+
+    const { data: app, error: insertError } = await supabase
+      .from("merchant_applications")
+      .insert(row)
+      .select("id")
+      .single();
+
+    if (insertError) {
+      console.error(LOG_PREFIX, "saveApplicationAndPdf insert error:", insertError);
+      return { success: false, error: insertError.message || "Failed to save application." };
+    }
+
+    const applicationId = app.id as string;
+    const classification = computePaperClassification(payload);
+    await supabase
+      .from("merchant_applications")
+      .update({
+        industry_risk_tier: classification.industryRiskTier,
+        paper_type: classification.paperType,
+        paper_score: classification.paperScore,
+      })
+      .eq("id", applicationId);
+
+    const pdfBuffer = await generateApplicationPdf(payload, undefined, classification);
+    const pdfFilename = applicationPdfFilename(payload.business.businessName);
+    const safePdfName = pdfFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const pdfStoragePath = `${applicationId}/application/${safePdfName}`;
+    const { error: pdfUploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(pdfStoragePath, pdfBuffer, { contentType: "application/pdf", upsert: false });
+    if (pdfUploadError) {
+      console.error(LOG_PREFIX, "saveApplicationAndPdf PDF upload error:", pdfUploadError);
+      return { success: false, error: "Failed to save application PDF." };
+    }
+    await supabase.from("merchant_application_files").insert({
+      application_id: applicationId,
+      file_type: "application_pdf",
+      file_name: pdfFilename,
+      storage_path: pdfStoragePath,
+      content_type: "application/pdf",
+      file_size_bytes: pdfBuffer.length,
+    });
+
+    return { success: true, applicationId };
+  } catch (err) {
+    console.error(LOG_PREFIX, "saveApplicationAndPdf error:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to save." };
+  }
+}
+
+/**
+ * Step 5: Link documents to existing application, mark submitted, send emails and funder matching.
+ * Payload must include savedApplicationId (from step 4).
+ */
+export async function submitDocuments(formData: FormData): Promise<SubmitResult> {
+  try {
+    const payloadRaw = formData.get("payload");
+    if (typeof payloadRaw !== "string") {
+      return { success: false, error: "Missing form payload." };
+    }
+    const payload: SubmitPayload & { savedApplicationId?: string } = JSON.parse(payloadRaw);
+    const applicationId = payload.savedApplicationId;
+    if (!applicationId) {
+      return { success: false, error: "Missing application ID. Please complete Step 4 (Sign & Conclude) first." };
+    }
+
+    const supabase = getSupabaseServer();
+    const { data: existing, error: fetchErr } = await supabase
+      .from("merchant_applications")
+      .select("id, submission_status")
+      .eq("id", applicationId)
+      .single();
+    if (fetchErr || !existing) {
+      return { success: false, error: "Application not found." };
+    }
+    if (existing.submission_status !== "pending_documents") {
+      return { success: false, error: "Application was already submitted or is invalid." };
+    }
+
+    const uploadedFiles = payload.documents || { bankStatements: [], voidCheck: null, driversLicense: null };
+
+    for (const fileMetadata of uploadedFiles.bankStatements || []) {
+      if (fileMetadata?.storage_path) {
+        const tempPath = fileMetadata.storage_path;
+        const finalPath = tempPath.replace(/^temp\//, `${applicationId}/`);
+        const { error: moveError } = await supabase.storage.from(BUCKET).move(tempPath, finalPath);
+        await supabase.from("merchant_application_files").insert({
+          application_id: applicationId,
+          file_type: "bank_statements",
+          file_name: fileMetadata.file_name,
+          storage_path: moveError ? tempPath : finalPath,
+          content_type: fileMetadata.content_type || null,
+          file_size_bytes: fileMetadata.file_size,
+        });
+      }
+    }
+    if (uploadedFiles.voidCheck?.storage_path) {
+      const tempPath = uploadedFiles.voidCheck.storage_path;
+      const finalPath = tempPath.replace(/^temp\//, `${applicationId}/`);
+      const { error: moveError } = await supabase.storage.from(BUCKET).move(tempPath, finalPath);
+      await supabase.from("merchant_application_files").insert({
+        application_id: applicationId,
+        file_type: "void_check",
+        file_name: uploadedFiles.voidCheck.file_name,
+        storage_path: moveError ? tempPath : finalPath,
+        content_type: uploadedFiles.voidCheck.content_type || null,
+        file_size_bytes: uploadedFiles.voidCheck.file_size,
+      });
+    }
+    if (uploadedFiles.driversLicense?.storage_path) {
+      const tempPath = uploadedFiles.driversLicense.storage_path;
+      const finalPath = tempPath.replace(/^temp\//, `${applicationId}/`);
+      const { error: moveError } = await supabase.storage.from(BUCKET).move(tempPath, finalPath);
+      await supabase.from("merchant_application_files").insert({
+        application_id: applicationId,
+        file_type: "drivers_license",
+        file_name: uploadedFiles.driversLicense.file_name,
+        storage_path: moveError ? tempPath : finalPath,
+        content_type: uploadedFiles.driversLicense.content_type || null,
+        file_size_bytes: uploadedFiles.driversLicense.file_size,
+      });
+    }
+
+    await supabase
+      .from("merchant_applications")
+      .update({ submission_status: "submitted" })
+      .eq("id", applicationId);
+
+    const classification = computePaperClassification(payload);
+    const additionalDetails = buildAdditionalDetailsRows(payload, classification);
+    const pdfFilename = applicationPdfFilename(payload.business.businessName);
+    const { data: pdfFile } = await supabase
+      .from("merchant_application_files")
+      .select("storage_path")
+      .eq("application_id", applicationId)
+      .eq("file_type", "application_pdf")
+      .limit(1)
+      .single();
+    let pdfBuffer: Buffer;
+    if (pdfFile?.storage_path) {
+      const { data: blob } = await supabase.storage.from(BUCKET).download(pdfFile.storage_path);
+      pdfBuffer = Buffer.from(await (blob ?? new Blob()).arrayBuffer());
+    } else {
+      pdfBuffer = await generateApplicationPdf(payload, undefined, classification);
+    }
+
+    const pathForDownload = (storagePath: string) =>
+      storagePath.startsWith("temp/") ? storagePath.replace(/^temp\//, `${applicationId}/`) : storagePath;
+    const internalAttachments: { filename: string; content: Buffer }[] = [];
+    const addInternal = async (filename: string, buffer: Buffer, placement: WatermarkPlacement) => {
+      const content = await addWatermarkToPdf(buffer, placement);
+      internalAttachments.push({ filename, content });
+    };
+    await addInternal(pdfFilename, pdfBuffer, "application-form-terms");
+    for (let i = 0; i < (uploadedFiles.bankStatements || []).length; i++) {
+      const fileMetadata = uploadedFiles.bankStatements[i];
+      if (fileMetadata?.storage_path) {
+        try {
+          const path = pathForDownload(fileMetadata.storage_path);
+          const { data: fileData } = await supabase.storage.from(BUCKET).download(path);
+          if (fileData) {
+            const buffer = Buffer.from(await fileData.arrayBuffer());
+            const ext = fileMetadata.file_name.split(".").pop() || "pdf";
+            await addInternal(`bank-statement-${i + 1}.${ext}`, buffer, "page1-top30");
+          }
+        } catch {
+          // skip
+        }
+      }
+    }
+    if (uploadedFiles.voidCheck?.storage_path) {
+      try {
+        const path = pathForDownload(uploadedFiles.voidCheck.storage_path);
+        const { data: fileData } = await supabase.storage.from(BUCKET).download(path);
+        if (fileData) {
+          const buffer = Buffer.from(await fileData.arrayBuffer());
+          const ext = uploadedFiles.voidCheck.file_name.split(".").pop() || "pdf";
+          await addInternal(`void-check-1.${ext}`, buffer, "top-half");
+        }
+      } catch {
+        // skip
+      }
+    }
+    if (uploadedFiles.driversLicense?.storage_path) {
+      try {
+        const path = pathForDownload(uploadedFiles.driversLicense.storage_path);
+        const { data: fileData } = await supabase.storage.from(BUCKET).download(path);
+        if (fileData) {
+          const buffer = Buffer.from(await fileData.arrayBuffer());
+          const ext = uploadedFiles.driversLicense.file_name.split(".").pop() || "pdf";
+          await addInternal(`drivers-license-1.${ext}`, buffer, "top-half");
+        }
+      } catch {
+        // skip
+      }
+    }
+
+    const templateVars = {
+      businessName: payload.business.businessName || "",
+      applicationId,
+      merchantEmail: payload.personal.email?.trim() || "",
+      firstName: payload.personal.firstName?.trim() || "",
+      ownerName: [payload.personal.firstName?.trim(), payload.personal.lastName?.trim()].filter(Boolean).join(" ") || "",
+      phone: payload.personal.phone?.trim() || "",
+    };
+    const toHtml = (text: string) => text.replace(/\n/g, "<br>\n");
+    await sendEmail({
+      to: templateVars.merchantEmail,
+      cc: INTERNAL_EMAIL,
+      subject: MERCHANT_EMAIL_SUBJECT,
+      html: toHtml(getMerchantEmailBody(templateVars)),
+      attachments: [{ filename: pdfFilename, content: pdfBuffer }],
+    });
+    await sendEmail({
+      to: INTERNAL_EMAIL,
+      subject: getInternalEmailSubject(templateVars),
+      html: toHtml(getInternalEmailBody(templateVars)),
+      attachments: internalAttachments,
+    });
+    await clearAbandonedProgress(payload.personal.email.trim());
+    await markSubmitted(payload.personal.email ?? "");
+
+    try {
+      const funderIds = await getMatchedFunderIds(applicationId);
+      if (funderIds.length > 0) {
+        const result = await submitApplicationToFunders(applicationId, funderIds);
+        if (result.submitted) console.log(LOG_PREFIX, "auto-sent to", result.submitted, "funder(s)");
+      } else {
+        console.log(LOG_PREFIX, "auto-send: 0 funders matched for application", applicationId);
+        await sendFunderMatchSummaryZero(applicationId, payload);
+      }
+    } catch (e) {
+      console.error(LOG_PREFIX, "auto-send to funders failed", e);
+      await sendFunderMatchSummaryError(applicationId, payload, e);
+    }
+
+    const returnPdf = process.env.NODE_ENV !== "production" ? pdfBuffer.toString("base64") : undefined;
+    return { success: true, applicationId, pdfBase64: returnPdf, additionalDetails };
+  } catch (err) {
+    console.error(LOG_PREFIX, "submitDocuments error:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Submission failed." };
+  }
+}
+
 export async function submitApplication(formData: FormData): Promise<SubmitResult> {
   try {
     console.log(LOG_PREFIX, "start");
@@ -169,35 +468,7 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
     const payload: SubmitPayload = JSON.parse(payloadRaw);
     console.log(LOG_PREFIX, "payload parsed, business:", payload.business?.businessName || "");
 
-    const row = {
-      first_name: payload.personal.firstName,
-      last_name: payload.personal.lastName,
-      email: payload.personal.email.trim(),
-      phone: payload.personal.phone.trim(),
-      sms_consent: payload.personal.smsConsent ?? false,
-      business_name: payload.business.businessName.trim(),
-      dba: payload.business.dba?.trim() || null,
-      type_of_business: payload.business.typeOfBusiness.trim(),
-      start_date_of_business: payload.business.startDateOfBusiness.trim(),
-      ein: payload.business.ein.trim(),
-      address: payload.business.address.trim(),
-      city: payload.business.city.trim(),
-      state: payload.business.state.trim(),
-      zip: payload.business.zip.trim(),
-      industry: payload.business.industry.trim(),
-      monthly_revenue: payload.financial.monthlyRevenue.trim(),
-      funding_request: payload.financial.fundingRequest.trim(),
-      use_of_funds: payload.financial.useOfFunds.trim(),
-      ssn: payload.creditOwnership.ssn.trim(),
-      owner_address: payload.creditOwnership.address?.trim() || null,
-      owner_city: payload.creditOwnership.city?.trim() || null,
-      owner_state: payload.creditOwnership.state?.trim() || null,
-      owner_zip: payload.creditOwnership.zip?.trim() || null,
-      ownership_percent: payload.creditOwnership.ownershipPercent?.trim() || null,
-      signature_data_url: payload.signature.signatureDataUrl || null,
-      signed_at: payload.signature.signedAt || null,
-      audit_id: payload.signature.auditId || null,
-    };
+    const row = payloadToRow(payload);
 
     console.log(LOG_PREFIX, "getting Supabase client");
     const supabase = getSupabaseServer();

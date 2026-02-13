@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { PersonalCreditOwnership } from "../types";
-import type { PersonalInfo } from "../types";
+import type { PersonalCreditOwnership, PersonalInfo, SignatureAudit } from "../types";
 import { formatSSN, getDigits } from "../formatters";
+import { SignaturePad } from "../SignaturePad";
 
 const SSN_MASK_DELAY_MS = 3000;
 
@@ -12,13 +12,15 @@ interface Props {
   onChange: (data: PersonalCreditOwnership) => void;
   personal: PersonalInfo;
   onPersonalChange: (data: PersonalInfo) => void;
+  signature: SignatureAudit;
+  onSignatureChange: (data: SignatureAudit) => void;
   highlightEmpty?: boolean;
 }
 
 const emptyInputClass = "border-amber-400 bg-amber-50/50 focus:border-amber-500 focus:ring-amber-500";
 const normalInputClass = "border-slate-200 focus:border-[var(--brand-blue)] focus:ring-[var(--brand-blue)]";
 
-export function Step4PersonalCreditOwnership({ data, onChange, personal, onPersonalChange, highlightEmpty }: Props) {
+export function Step4PersonalCreditOwnership({ data, onChange, personal, onPersonalChange, signature, onSignatureChange, highlightEmpty }: Props) {
   const [ssnMasked, setSsnMasked] = useState(false);
   const ssnMaskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -205,6 +207,88 @@ export function Step4PersonalCreditOwnership({ data, onChange, personal, onPerso
             onChange={(e) => onChange({ ...data, ownershipPercent: e.target.value })}
             placeholder="e.g. 100"
             className={inputClass(false)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+        <div className="space-y-3 text-slate-700 text-sm leading-relaxed">
+          <p>
+            By submitting this application, each of the above listed business and
+            business owner/officer (individually and collectively, &quot;you&quot;)
+            authorize OneDay Capital LLC and each of its representatives,
+            successors, assigns and designees (&quot;Recipients&quot;) that may be
+            involved with or acquire commercial loans having daily repayment
+            features or purchases of future receivables including Merchant Cash
+            Advance transactions, including without limitation the application
+            therefor (collectively, &quot;Transactions&quot;) to obtain consumer or
+            personal, business and investigative reports and other information about
+            you, including credit card processor statements and bank statements,
+            from one or more consumer reporting agencies, such as TransUnion,
+            Experian and Equifax, and from other credit bureaus, banks, creditors
+            and other third parties. You also authorize OneDay Capital LLC to
+            transmit this application form, along with any of the foregoing
+            information obtained in connection with this application, to any or all
+            of the Recipients for the foregoing purposes. You also consent to the
+            release, by any creditor or financial institution, of any information
+            relating to any of you, to OneDay Capital LLC and to each of the
+            Recipients, on its own behalf.
+          </p>
+          <p>
+            <strong>
+              CONSENT TO TELEPHONE CALLS, SMS, WhatsApp, iMessaging:
+            </strong>{" "}
+            You expressly consent to receiving marketing and other calls and
+            messages, to landline, wireless or similar devices, including
+            auto-dialed and pre-recorded message calls, and SMS messages (including
+            text messages) from recipients, at telephone numbers that you have
+            provided. Message and data rates may apply. Your consent to receive
+            marketing calls is not required for your application. If you do not
+            consent, do not provide your phone number.
+          </p>
+          <p>
+            <strong>CONSENT TO ELECTRONIC DISCLOSURE:</strong> You expressly
+            consent to transactions and disclosures with recipients online and
+            electronically. Disclosure will be provided to you either on the
+            screen, on recipients&apos; website or via electronic mail to the email
+            address you provided.
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={personal.smsConsent}
+            onChange={(e) =>
+              onPersonalChange({ ...personal, smsConsent: e.target.checked })
+            }
+            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-[var(--brand-blue)] focus:ring-[var(--brand-blue)]"
+          />
+          <span className="text-sm font-medium text-slate-800">
+            I have read and agree to the terms and consents above.{" "}
+            <span className="text-red-600">*</span>
+          </span>
+        </label>
+      </div>
+
+      <div className="border-t border-slate-200 pt-8">
+        <h3 className="font-heading text-xl font-bold text-slate-800">
+          Agreement — Sign &amp; Conclude
+        </h3>
+        <p className="mt-1 text-slate-600 text-sm">
+          Sign below to confirm the information provided is accurate. Click Save &amp; Next to save your application and continue to document upload.
+        </p>
+        <div className="mt-4">
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            Your signature <span className="text-red-600">*</span>
+          </label>
+          <SignaturePad
+            onSignatureChange={(dataUrl) => {
+              const signedAt = dataUrl ? new Date().toISOString() : null;
+              const auditId = dataUrl ? `audit-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` : null;
+              onSignatureChange({ signatureDataUrl: dataUrl, signedAt, auditId });
+            }}
+            signedAt={signature.signedAt}
+            auditId={signature.auditId}
           />
         </div>
       </div>

@@ -41,6 +41,7 @@ create table if not exists public.funders (
   funding_speed text,
 
   notes text,
+  iso_agreement_signed boolean not null default false,
 
   constraint funders_relationship_status check (
     relationship_status in (
@@ -54,6 +55,7 @@ create table if not exists public.funders (
 
 create index if not exists idx_funders_relationship_status on public.funders (relationship_status);
 create index if not exists idx_funders_name on public.funders (name);
+create index if not exists idx_funders_iso_agreement_signed on public.funders (iso_agreement_signed);
 
 drop trigger if exists set_funders_updated_at on public.funders;
 create trigger set_funders_updated_at
@@ -61,6 +63,7 @@ create trigger set_funders_updated_at
   for each row execute function public.set_updated_at();
 
 comment on table public.funders is 'One row per funding partner; relationship status, SLA; Phase 1 email-only.';
+comment on column public.funders.iso_agreement_signed is 'True when a signed ISO agreement is on file; only these funders are included in auto-match.';
 
 -- -----------------------------------------------------------------------------
 -- 3) Funder contacts – one contact per funder, one email
@@ -123,6 +126,7 @@ create table if not exists public.funder_guidelines (
   updated_at timestamptz not null default now(),
 
   funder_id uuid not null references public.funders (id) on delete cascade unique,
+  funder_name text,
 
   min_funding numeric,
   max_funding numeric,
@@ -152,12 +156,42 @@ create table if not exists public.funder_guidelines (
 
 create index if not exists idx_funder_guidelines_funder_id on public.funder_guidelines (funder_id);
 
+-- Keep funder_name in sync with funders.name for easy reading in table view
+create or replace function public.sync_funder_guidelines_funder_name()
+returns trigger as $$
+begin
+  select name into new.funder_name from public.funders where id = new.funder_id;
+  return new;
+end;
+$$ language plpgsql;
+
+create or replace function public.sync_funder_name_to_guidelines()
+returns trigger as $$
+begin
+  if old.name is distinct from new.name then
+    update public.funder_guidelines set funder_name = new.name where funder_id = new.id;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists sync_funder_guidelines_funder_name on public.funder_guidelines;
+create trigger sync_funder_guidelines_funder_name
+  before insert or update on public.funder_guidelines
+  for each row execute function public.sync_funder_guidelines_funder_name();
+
+drop trigger if exists sync_funder_name_to_guidelines on public.funders;
+create trigger sync_funder_name_to_guidelines
+  after update of name on public.funders
+  for each row execute function public.sync_funder_name_to_guidelines();
+
 drop trigger if exists set_funder_guidelines_updated_at on public.funder_guidelines;
 create trigger set_funder_guidelines_updated_at
   before update on public.funder_guidelines
   for each row execute function public.set_updated_at();
 
 comment on table public.funder_guidelines is 'Eligibility, min/max funding, turnaround, required_docs (JSONB), commission notes.';
+comment on column public.funder_guidelines.funder_name is 'Denormalized from funders.name for display; kept in sync by triggers.';
 
 -- -----------------------------------------------------------------------------
 -- 6) Funder commission terms – how we get paid

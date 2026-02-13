@@ -10,6 +10,7 @@
     }
   ],
   "crons": [
+    {"path": "/api/cron/pending-documents-reminder", "schedule": "*/5 * * * *"},
     {"path": "/api/cron/abandonment-nudges", "schedule": "0 16 * * *"},
     {"path": "/api/cron/followup-15d", "schedule": "0 14 * * *"},
     {"path": "/api/cron/funnel-digest-noon", "schedule": "0 18 * * *"},
