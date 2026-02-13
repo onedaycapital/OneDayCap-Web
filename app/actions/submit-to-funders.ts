@@ -39,6 +39,18 @@ function parseCurrencyValue(s: string | null | undefined): number | null {
 }
 
 /**
+ * Form stores monthly revenue as a range label (under-50k, 50k-100k, over-100k).
+ * Map to a numeric value for guideline matching: use midpoint of range.
+ */
+function monthlyRevenueToNumber(s: string | null | undefined): number | null {
+  const v = (s ?? "").trim().toLowerCase();
+  if (v === "under-50k") return 25_000;   // 0–50k midpoint
+  if (v === "50k-100k") return 75_000;   // 50k–100k midpoint
+  if (v === "over-100k") return 150_000; // >100k representative
+  return parseCurrencyValue(s);
+}
+
+/**
  * Return funder IDs that match the application per funder_guidelines (state, industry, revenue, funding range).
  * Used to build the shortlist. See docs/FUNDER_SHORTLIST_MATCHING.md for rules.
  */
@@ -49,17 +61,23 @@ export async function getMatchedFunderIds(applicationId: string): Promise<string
     .select("state, industry, monthly_revenue, funding_request")
     .eq("id", applicationId)
     .single();
-  if (appErr || !app) return [];
+  if (appErr || !app) {
+    console.warn("[funder-match] app not found", applicationId, appErr?.message);
+    return [];
+  }
 
   const appState = (app.state ?? "").trim().toUpperCase();
   const appIndustry = (app.industry ?? "").trim();
-  const appRevenue = parseCurrencyValue(app.monthly_revenue);
+  const appRevenue = parseCurrencyValue(app.monthly_revenue) ?? monthlyRevenueToNumber(app.monthly_revenue);
   const appFunding = parseCurrencyValue(app.funding_request);
 
   const { data: guidelines, error: gErr } = await supabase
     .from("funder_guidelines")
     .select("funder_id, states_allowed, states_excluded, industries, revenue_min, revenue_max, min_funding, max_funding");
-  if (gErr || !guidelines?.length) return [];
+  if (gErr || !guidelines?.length) {
+    console.warn("[funder-match] no funder_guidelines rows", gErr?.message);
+    return [];
+  }
 
   const matched: string[] = [];
   for (const g of guidelines) {
@@ -82,7 +100,17 @@ export async function getMatchedFunderIds(applicationId: string): Promise<string
     if (g.max_funding != null && appFunding != null && appFunding > g.max_funding) continue;
     matched.push(g.funder_id);
   }
-  return Array.from(new Set(matched));
+  const result = Array.from(new Set(matched));
+  if (result.length === 0) {
+    console.warn("[funder-match] no funders passed filters", {
+      applicationId,
+      monthly_revenue_raw: app.monthly_revenue,
+      appRevenue,
+      appFunding,
+      guidelineCount: guidelines.length,
+    });
+  }
+  return result;
 }
 
 /**
@@ -258,11 +286,11 @@ export async function submitApplicationToFunders(
 
 <p>
 Merchant Name: ${escapeHtml(app?.business_name ?? "—")}<br>
-Funds Requested: ${escapeHtml(app?.funding_request ?? "—")}<br>
+Funds Requested: ${formatCurrencyDisplay(app?.funding_request)}<br>
 Reason for Funds: ${escapeHtml(app?.use_of_funds ?? "—")}<br>
 State: ${escapeHtml(app?.state ?? "—")}<br>
 Industry: ${escapeHtml(app?.industry ?? "—")}<br>
-Monthly Revenue: ${escapeHtml(app?.monthly_revenue ?? "—")}<br>
+Monthly Revenues (Approximate): ${formatCurrencyDisplay(app?.monthly_revenue)}<br>
 Time in Business: ${escapeHtml(app?.start_date_of_business ?? "—")}
 </p>
 
@@ -428,7 +456,7 @@ The attached materials contain confidential financial and personal information p
     const summaryHtml = `
 <p><strong>Application:</strong> ${escapeHtml(businessName)}</p>
 <p>Application ID: ${escapeHtml(applicationId)}</p>
-<p>Funds requested: ${escapeHtml(app?.funding_request ?? "—")} | State: ${escapeHtml(app?.state ?? "—")} | Industry: ${escapeHtml(app?.industry ?? "—")}</p>
+<p>Funds requested: ${formatCurrencyDisplay(app?.funding_request)} | Monthly revenues: ${formatCurrencyDisplay(app?.monthly_revenue)} | State: ${escapeHtml(app?.state ?? "—")} | Industry: ${escapeHtml(app?.industry ?? "—")}</p>
 
 <p><strong>Recipients (use this list to follow up and negotiate):</strong></p>
 <table style="border-collapse:collapse; font-size:14px;">
@@ -468,4 +496,16 @@ function escapeHtml(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** Format digits or currency string as USD for display (e.g. in emails). */
+function formatCurrencyDisplay(s: string | null | undefined): string {
+  const n = parseCurrencyValue(s);
+  if (n == null) return (s ?? "").trim() || "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(n);
 }

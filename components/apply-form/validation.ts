@@ -25,7 +25,7 @@ export function validateStep2(business: ApplicationFormData["business"]): string
 }
 
 export function validateStep3(financial: ApplicationFormData["financial"]): string | null {
-  if (!(financial.monthlyRevenue || "").trim()) return "Monthly Revenue is required.";
+  if (!(financial.monthlyRevenue || "").trim()) return "Monthly Revenues (Approximate) is required.";
   if (!(financial.fundingRequest || "").trim()) return "Funding Request is required.";
   if (!(financial.useOfFunds || "").trim()) return "Use of Funds is required.";
   return null;

@@ -21,62 +21,54 @@ const USE_OF_FUNDS_OPTIONS = [
   { value: "others", label: "Others" },
 ];
 
-const MONTHLY_REVENUE_OPTIONS = [
-  { value: "under-50k", label: "<$50,000" },
-  { value: "50k-100k", label: "$50,000 - $100,000" },
-  { value: "over-100k", label: "> $100,000" },
-];
-
-/** First bracket: fixed low $20k, high = 1.25× first reward threshold ($20k) → $25k. Aligns with Customer Reward Program first reward at $20k. */
+/** First bracket (revenue < $50k): low $20k, high $25k. Aligns with Customer Reward Program first reward at $20k. */
 const FIRST_BRACKET_LOW = 20_000;
-const FIRST_BRACKET_HIGH_MULTIPLIER = 1.25;
-const FIRST_BRACKET_UPPER_BOUND = 20_000;
+const FIRST_BRACKET_HIGH = 25_000;
 
-/** Middle bracket: 0.8x–1.5x midpoint. */
-const MID_BRACKET_MIDPOINT = 75_000;
+/** Middle bracket ($50k–$100k revenue): 0.8x–1.5x of $75k. */
+const MID_BRACKET_LOW = 60_000;
+const MID_BRACKET_HIGH = 112_500;
 
-/** Last bracket (over-100k): 0.8x–1.5x with high capped at $500k; if user requests >$500k, that value is shown as potential approval. */
-const LAST_BRACKET_MIDPOINT = 150_000;
-const LAST_BRACKET_CAP = 500_000;
+/** Last bracket (revenue ≥ $100k): 0.8x–1.5x of $150k, high capped at $500k unless requested > $500k. */
+const LAST_BRACKET_LOW = 120_000;
+const LAST_BRACKET_HIGH_CAP = 500_000;
 
 function formatUsd(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 }
 
+/** Parse monthly revenue from form (digits-only string from currency input). */
+function parseMonthlyRevenueNum(value: string | null | undefined): number {
+  const digits = (value ?? "").replace(/\D/g, "");
+  const n = digits ? parseInt(digits, 10) : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Compute pre-approval range from numeric monthly revenue (and optional funding request for >$500k cap).
+ */
 function getPreApprovalRange(
-  monthlyRevenue: string,
+  monthlyRevenueDigits: string,
   fundingRequestDigits: string
 ): { low: number; high: number; useRequestedAmount: boolean } | null {
-  const rev = monthlyRevenue.trim();
-  const requestedNum = fundingRequestDigits ? parseInt(fundingRequestDigits, 10) : 0;
-  const requestedValid = !Number.isNaN(requestedNum) && requestedNum > 0;
+  const revNum = parseMonthlyRevenueNum(monthlyRevenueDigits);
+  const requestedNum = parseMonthlyRevenueNum(fundingRequestDigits);
+  const requestedValid = requestedNum > 0;
 
-  if (rev === "under-50k") {
-    return {
-      low: FIRST_BRACKET_LOW,
-      high: FIRST_BRACKET_HIGH_MULTIPLIER * FIRST_BRACKET_UPPER_BOUND,
-      useRequestedAmount: false,
-    };
+  if (revNum <= 0) return null;
+
+  if (revNum < 50_000) {
+    return { low: FIRST_BRACKET_LOW, high: FIRST_BRACKET_HIGH, useRequestedAmount: false };
   }
-  if (rev === "50k-100k") {
-    return {
-      low: 0.8 * MID_BRACKET_MIDPOINT,
-      high: 1.5 * MID_BRACKET_MIDPOINT,
-      useRequestedAmount: false,
-    };
+  if (revNum < 100_000) {
+    return { low: MID_BRACKET_LOW, high: MID_BRACKET_HIGH, useRequestedAmount: false };
   }
-  if (rev === "over-100k") {
-    const capHigh = Math.min(1.5 * LAST_BRACKET_MIDPOINT, LAST_BRACKET_CAP);
-    if (requestedValid && requestedNum > LAST_BRACKET_CAP) {
-      return { low: 0.8 * LAST_BRACKET_MIDPOINT, high: requestedNum, useRequestedAmount: true };
-    }
-    return {
-      low: 0.8 * LAST_BRACKET_MIDPOINT,
-      high: capHigh,
-      useRequestedAmount: false,
-    };
+  // revNum >= 100_000
+  const capHigh = Math.min(225_000, LAST_BRACKET_HIGH_CAP);
+  if (requestedValid && requestedNum > LAST_BRACKET_HIGH_CAP) {
+    return { low: LAST_BRACKET_LOW, high: requestedNum, useRequestedAmount: true };
   }
-  return null;
+  return { low: LAST_BRACKET_LOW, high: capHigh, useRequestedAmount: false };
 }
 
 export function Step3FinancialFunding({ data, onChange, highlightEmpty }: Props) {
@@ -87,14 +79,14 @@ export function Step3FinancialFunding({ data, onChange, highlightEmpty }: Props)
     }`;
 
   const showCompute = !!(data.useOfFunds && data.useOfFunds.trim());
-  const range = data.monthlyRevenue
-    ? getPreApprovalRange(data.monthlyRevenue.trim(), data.fundingRequest ?? "")
+  const range = data.monthlyRevenue?.replace(/\D/g, "")
+    ? getPreApprovalRange(data.monthlyRevenue ?? "", data.fundingRequest ?? "")
     : null;
   const rangeText = range
     ? range.useRequestedAmount
       ? `up to ${formatUsd(range.high)} (based on your requested amount)`
       : `${formatUsd(range.low)} – ${formatUsd(range.high)}`
-    : "Select monthly revenue above to see your range.";
+    : "Enter monthly revenue above to see your range.";
 
   const gift = getGiftForFundingRequest(data.fundingRequest ?? "");
   const hasFundingAmount = !!(data.fundingRequest && parseInt(data.fundingRequest.replace(/\D/g, ""), 10) > 0);
@@ -104,16 +96,21 @@ export function Step3FinancialFunding({ data, onChange, highlightEmpty }: Props)
       <h2 className="font-heading text-2xl font-bold text-slate-800">Financial & Funding Information</h2>
       <p className="text-slate-600 text-sm">Share your funding needs and financial overview. Complete any fields that are still missing.</p>
 
-      <RadioTiles
-        name="monthlyRevenue"
-        question="Monthly Revenue"
-        instruction="Choose the range that best describes your monthly revenue:"
-        options={MONTHLY_REVENUE_OPTIONS}
-        value={data.monthlyRevenue}
-        onChange={(monthlyRevenue) => onChange({ ...data, monthlyRevenue })}
-        required
-        highlightEmpty={highlightEmpty}
-      />
+      <div>
+        <label htmlFor="monthlyRevenue" className="mb-1.5 block text-sm font-medium text-slate-700">
+          Monthly Revenues (Approximate) *
+        </label>
+        <input
+          id="monthlyRevenue"
+          type="text"
+          inputMode="numeric"
+          value={formatFundingRequestCurrency(data.monthlyRevenue)}
+          onChange={(e) => onChange({ ...data, monthlyRevenue: parseFundingRequest(e.target.value) })}
+          placeholder="$0"
+          className={inputClass(isEmpty(data.monthlyRevenue))}
+          required
+        />
+      </div>
 
       <div>
         <label htmlFor="fundingRequest" className="mb-1.5 block text-sm font-medium text-slate-700">

@@ -16,12 +16,25 @@ function formatFundingLabel(useOfFunds: string): string {
 }
 
 function formatRevenueLabel(monthlyRevenue: string): string {
-  const labels: Record<string, string> = {
+  const trimmed = (monthlyRevenue ?? "").trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length > 0) {
+    const n = parseInt(digits, 10);
+    if (Number.isFinite(n)) {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(n);
+    }
+  }
+  const legacy: Record<string, string> = {
     "under-50k": "<$50,000",
     "50k-100k": "$50,000 - $100,000",
     "over-100k": "> $100,000",
   };
-  return labels[monthlyRevenue] ?? monthlyRevenue;
+  return legacy[trimmed] ?? trimmed;
 }
 
 /**
@@ -44,7 +57,7 @@ export async function sendFundingLeadNotification(params: {
 <p><strong>Funding lead</strong> — applicant completed Step 1 (Financial and Funding).</p>
 <table style="border-collapse:collapse; margin-top:12px;">
 <tr><td style="padding:6px 12px 6px 0; vertical-align:top;"><strong>Email</strong></td><td style="padding:6px 0;">${escapeHtml(emailDisplay)}</td></tr>
-<tr><td style="padding:6px 12px 6px 0; vertical-align:top;"><strong>Monthly Revenue</strong></td><td style="padding:6px 0;">${escapeHtml(revenue)}</td></tr>
+<tr><td style="padding:6px 12px 6px 0; vertical-align:top;"><strong>Monthly Revenues (Approximate)</strong></td><td style="padding:6px 0;">${escapeHtml(revenue)}</td></tr>
 <tr><td style="padding:6px 12px 6px 0; vertical-align:top;"><strong>Funding Request</strong></td><td style="padding:6px 0;">${escapeHtml(fundingRequest)}</td></tr>
 <tr><td style="padding:6px 12px 6px 0; vertical-align:top;"><strong>Use of Funds</strong></td><td style="padding:6px 0;">${escapeHtml(useOfFunds)}</td></tr>
 </table>

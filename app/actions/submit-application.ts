@@ -81,6 +81,83 @@ export type SubmitResult =
 
 const LOG_PREFIX = "[submit]";
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Send a funder-matching summary to subs@ when no funders matched, so they can manually review and follow up.
+ */
+function formatCurrencyForEmail(s: string | null | undefined): string {
+  const digits = (s ?? "").trim().replace(/\D/g, "");
+  const n = digits ? parseInt(digits, 10) : NaN;
+  if (!Number.isFinite(n)) return (s ?? "").trim() || "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+async function sendFunderMatchSummaryZero(
+  applicationId: string,
+  payload: SubmitPayload
+): Promise<void> {
+  const businessName = (payload.business?.businessName ?? "").trim() || "—";
+  const state = (payload.business?.state ?? "").trim() || "—";
+  const industry = (payload.business?.industry ?? "").trim() || "—";
+  const monthlyRevenueDisplay = formatCurrencyForEmail(payload.financial?.monthlyRevenue);
+  const fundingRequestDisplay = formatCurrencyForEmail(payload.financial?.fundingRequest);
+  const subject = `Funder matching summary: ${businessName} — 0 funders matched (manual review)`;
+  const html = `
+<p><strong>Application submitted; no funders matched per guidelines.</strong> Please review manually if needed.</p>
+
+<p><strong>Application:</strong> ${escapeHtml(businessName)}</p>
+<p>Application ID: ${escapeHtml(applicationId)}</p>
+<p>State: ${escapeHtml(state)} | Industry: ${escapeHtml(industry)}</p>
+<p>Monthly revenues (approximate): ${escapeHtml(monthlyRevenueDisplay)} | Funding request: ${escapeHtml(fundingRequestDisplay)}</p>
+
+<p>— OneDayCap (funder matching)</p>
+`.trim();
+  await sendEmail({
+    to: INTERNAL_EMAIL,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Notify subs@ when funder matching or send failed (e.g. DB/Resend error) so they can follow up manually.
+ */
+async function sendFunderMatchSummaryError(
+  applicationId: string,
+  payload: SubmitPayload,
+  error: unknown
+): Promise<void> {
+  const businessName = (payload.business?.businessName ?? "").trim() || "—";
+  const errMessage = error instanceof Error ? error.message : String(error);
+  const subject = `Funder matching error: ${businessName}`;
+  const html = `
+<p><strong>Application was submitted but funder matching or send failed.</strong> Please review manually.</p>
+
+<p><strong>Application:</strong> ${escapeHtml(businessName)}</p>
+<p>Application ID: ${escapeHtml(applicationId)}</p>
+<p><strong>Error:</strong> ${escapeHtml(errMessage)}</p>
+
+<p>— OneDayCap (funder matching)</p>
+`.trim();
+  await sendEmail({
+    to: INTERNAL_EMAIL,
+    subject,
+    html,
+  });
+}
+
 export async function submitApplication(formData: FormData): Promise<SubmitResult> {
   try {
     console.log(LOG_PREFIX, "start");
@@ -369,15 +446,20 @@ export async function submitApplication(formData: FormData): Promise<SubmitResul
     // Mark application session as submitted so abandonment nudges are suppressed.
     await markSubmitted(payload.personal.email ?? "");
 
-    // Auto-send to shortlisted funders (do not fail the submit if this errors)
+    // Auto-send to shortlisted funders (do not fail the submit if this errors).
+    // subs@ always gets a summary: with recipients when we sent to funders, or a "0 matched" summary for manual follow-up.
     try {
       const funderIds = await getMatchedFunderIds(applicationId);
       if (funderIds.length > 0) {
         const result = await submitApplicationToFunders(applicationId, funderIds);
         if (result.submitted) console.log(LOG_PREFIX, "auto-sent to", result.submitted, "funder(s)");
+      } else {
+        console.log(LOG_PREFIX, "auto-send: 0 funders matched for application", applicationId);
+        await sendFunderMatchSummaryZero(applicationId, payload);
       }
     } catch (e) {
       console.error(LOG_PREFIX, "auto-send to funders failed", e);
+      await sendFunderMatchSummaryError(applicationId, payload, e);
     }
 
     // User gets the PDF via email; processing page shows additionalDetails when present.

@@ -24,7 +24,8 @@ export interface AdditionalDetailsRow {
   value: string;
 }
 
-const MONTHLY_REVENUE_DISPLAY: Record<string, string> = {
+/** Legacy range labels (for old data); numeric values are formatted as currency. */
+const MONTHLY_REVENUE_LEGACY: Record<string, string> = {
   "under-50k": "<$50,000",
   "50k-100k": "$50,000 - $100,000",
   "over-100k": "> $100,000",
@@ -32,7 +33,20 @@ const MONTHLY_REVENUE_DISPLAY: Record<string, string> = {
 
 function formatMonthlyRevenueDisplay(value: string | null | undefined): string {
   if (!value?.trim()) return "—";
-  return MONTHLY_REVENUE_DISPLAY[value.trim()] ?? value;
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length > 0) {
+    const n = parseInt(digits, 10);
+    if (Number.isFinite(n)) {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(n);
+    }
+  }
+  return MONTHLY_REVENUE_LEGACY[trimmed] ?? trimmed;
 }
 
 /** Format funding request as USD with 0 decimals for PDF display, e.g. $65,000. */
@@ -62,7 +76,7 @@ export function buildAdditionalDetailsRows(
     { label: "Industry Risk", value: industryRiskDisplay },
     { label: "Paper Type", value: String(paperTypeDisplay) },
     { label: "State", value: b.state || "—" },
-    { label: "Monthly Revenues", value: formatMonthlyRevenueDisplay(f.monthlyRevenue) },
+    { label: "Monthly Revenues (Approximate)", value: formatMonthlyRevenueDisplay(f.monthlyRevenue) },
     { label: "Time in Business", value: b.startDateOfBusiness || "—" },
     { label: "Industry", value: b.industry || "—" },
   ];

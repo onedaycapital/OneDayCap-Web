@@ -87,14 +87,22 @@ function tibToScore(months: number | null): number {
   return 25;
 }
 
-/** Monthly revenue: form value or parsed. Score: $100k+→100, $50k–99k→80, <50k→40. */
+/** Monthly revenue: numeric (digits/currency) or legacy range. Score: $100k+→100, $50k–99k→80, <50k→40. */
 function revenueToScoreAndNumeric(
   monthlyRevenue: string | null | undefined
 ): { score: number; numericForMultiple: number } {
-  const v = (monthlyRevenue || "").trim().toLowerCase();
-  if (v === "over-100k" || v === "> $100,000") return { score: 100, numericForMultiple: 125_000 };
-  if (v === "50k-100k" || (v.includes("50") && v.includes("100"))) return { score: 80, numericForMultiple: 75_000 };
-  if (v === "under-50k" || v === "<$50,000") return { score: 40, numericForMultiple: 25_000 };
+  const v = (monthlyRevenue || "").trim();
+  const digits = v.replace(/\D/g, "");
+  const num = digits ? parseInt(digits, 10) : NaN;
+  if (Number.isFinite(num)) {
+    const numericForMultiple = num > 0 ? num : 25_000;
+    const score = num >= 100_000 ? 100 : num >= 50_000 ? 80 : 40;
+    return { score, numericForMultiple };
+  }
+  const lower = v.toLowerCase();
+  if (lower === "over-100k" || lower === "> $100,000") return { score: 100, numericForMultiple: 125_000 };
+  if (lower === "50k-100k" || (v.includes("50") && v.includes("100"))) return { score: 80, numericForMultiple: 75_000 };
+  if (lower === "under-50k" || lower === "<$50,000") return { score: 40, numericForMultiple: 25_000 };
   return { score: 40, numericForMultiple: 25_000 };
 }
 
