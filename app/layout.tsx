@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   title: "OneDay Capital | Capital. In One Day.",
   description:
     "Fast, flexible access to working capital for small businesses. No collateral, minimal paperwork, same-day decisions. Funding based on real cash flow.",
+  icons: {
+    icon: "/images/bull-hero.png",
+  },
 };
 
 export default function RootLayout({
