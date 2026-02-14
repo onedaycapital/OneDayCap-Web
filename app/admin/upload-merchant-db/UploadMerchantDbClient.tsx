@@ -17,6 +17,7 @@ export function UploadMerchantDbClient({
   listError: initialListError,
   stagingCount = 0,
   stagingCountError,
+  stagingTableName = "Staging",
   preStagingCount = 0,
   preStagingCountError,
   preStagingTableName = "pre_staging",
@@ -30,6 +31,7 @@ export function UploadMerchantDbClient({
   listError?: string;
   stagingCount?: number;
   stagingCountError?: string;
+  stagingTableName?: string;
   preStagingCount?: number;
   preStagingCountError?: string;
   preStagingTableName?: string;
@@ -45,6 +47,7 @@ export function UploadMerchantDbClient({
   // Display pre-staging count: use fresh value from process action so UI updates without waiting for refresh
   const [displayPreStagingCount, setDisplayPreStagingCount] = useState(preStagingCount);
   const [displayOtherPreStagingCount, setDisplayOtherPreStagingCount] = useState(otherPreStagingCount ?? 0);
+  const [displayStagingCount, setDisplayStagingCount] = useState(stagingCount);
   const [processMainSelected, setProcessMainSelected] = useState(true);
   const [processOtherSelected, setProcessOtherSelected] = useState(false);
   useEffect(() => {
@@ -53,6 +56,9 @@ export function UploadMerchantDbClient({
   useEffect(() => {
     setDisplayOtherPreStagingCount(otherPreStagingCount ?? 0);
   }, [otherPreStagingCount]);
+  useEffect(() => {
+    setDisplayStagingCount(stagingCount);
+  }, [stagingCount]);
   // Sync from server, but don't overwrite with empty when we have local jobs (e.g. just added optimistically)
   useEffect(() => {
     if (initialJobs.length > 0) {
@@ -213,6 +219,7 @@ export function UploadMerchantDbClient({
       setProcessSuccess(msg);
       if (result.preStagingCountAfter != null) setDisplayPreStagingCount(result.preStagingCountAfter);
       if (result.otherPreStagingCountAfter != null) setDisplayOtherPreStagingCount(result.otherPreStagingCountAfter);
+      if (result.stagingCountAfter != null) setDisplayStagingCount(result.stagingCountAfter);
       const newMain = result.preStagingCountAfter ?? displayPreStagingCount;
       const newOther = result.otherPreStagingCountAfter ?? displayOtherPreStagingCount;
       const remaining = (processMainSelected ? newMain : 0) + (processOtherSelected ? newOther : 0);
@@ -291,11 +298,12 @@ export function UploadMerchantDbClient({
           )}
         </div>
         <p className="text-sm text-slate-700 mb-1">
-          <span className="font-medium">Staging:</span>{" "}
+          <span className="font-medium">Staging</span>{" "}
+          <span className="text-slate-500">(table <code className="bg-slate-200 px-1 rounded">{stagingTableName}</code>):</span>{" "}
           {stagingCountError ? (
             <span className="text-amber-600">Could not load ({stagingCountError})</span>
           ) : (
-            <span>{stagingCount.toLocaleString()} rows</span>
+            <span>{displayStagingCount.toLocaleString()} rows</span>
           )}
           {" · "}
           <span className="font-medium">Quarantine:</span>{" "}
@@ -304,6 +312,9 @@ export function UploadMerchantDbClient({
           ) : (
             <span>{quarantineCount.toLocaleString()} rows</span>
           )}
+        </p>
+        <p className="text-xs text-slate-500 mb-1">
+          <strong>Where data goes:</strong> Uniques → <strong>Staging</strong> (table <code className="bg-slate-200 px-1 rounded">{stagingTableName}</code>). Duplicates → <strong>Quarantine</strong>. Rows are removed only from the pre-staging table(s) after each batch; nothing is deleted from Staging. The count above is exact (over 50k, use this page or run migration 015 for RPC count; Supabase Table Editor may not show exact totals).
         </p>
         {(displayPreStagingCount > 0 || displayOtherPreStagingCount > 0) && (processMainSelected || processOtherSelected) && (
           <div className="mt-2 space-y-2">

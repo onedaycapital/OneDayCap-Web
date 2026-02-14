@@ -6,6 +6,7 @@ import {
   getQuarantineCount,
   checkStagingPreStagingSchema,
 } from "@/app/actions/admin-staging-import";
+import { getStagingTable } from "@/lib/staging-config";
 import { UploadMerchantDbClient } from "./UploadMerchantDbClient";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export default async function AdminUploadMerchantDbPage() {
     otherTableName: otherPreStagingTable,
     otherCount: otherPreStagingCount,
   } = preStagingCounts;
+  const stagingTableName = getStagingTable();
   return (
     <div>
       <h1 className="text-xl font-semibold text-slate-800 mb-4">Upload merchant DB</h1>
@@ -44,6 +46,7 @@ export default async function AdminUploadMerchantDbPage() {
         listError={listError}
         stagingCount={stagingCount}
         stagingCountError={stagingCountError}
+        stagingTableName={stagingTableName}
         preStagingCount={preStagingCount}
         preStagingCountError={preStagingCountError}
         preStagingTableName={preStagingTableName}

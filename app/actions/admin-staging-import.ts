@@ -379,12 +379,23 @@ export interface ListStagingImportJobsResult {
   error?: string;
 }
 
-/** Current row count in staging table (for display). Uses SUPABASE_STAGING_TABLE if set. */
+/** Current row count in staging table (for display). Uses RPC when available for exact count over 50k. */
 export async function getStagingCount(): Promise<{ count: number; error?: string }> {
+  noStore();
   const supabase = getSupabaseServer();
-  const stagingTable = process.env.SUPABASE_STAGING_TABLE || "staging";
-  const { count, error } = await supabase.from(getStagingTable()).select("*", { count: "exact", head: true });
-  if (error) return { count: 0, error: error.message };
+  const tableName = getStagingTable();
+  const { data, error } = await supabase.rpc("get_staging_count", { table_name: tableName });
+  const rpcCount =
+    data != null
+      ? typeof data === "number"
+        ? data
+        : typeof data === "string"
+          ? parseInt(data, 10)
+          : Number(data)
+      : null;
+  if (!error && rpcCount !== null && Number.isFinite(rpcCount)) return { count: Math.floor(rpcCount) };
+  const { count, error: selectError } = await supabase.from(tableName).select("*", { count: "exact", head: true });
+  if (selectError) return { count: 0, error: selectError.message };
   return { count: count ?? 0 };
 }
 
