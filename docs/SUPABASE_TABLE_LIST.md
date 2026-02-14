@@ -6,7 +6,9 @@ Reference for the Merchant DB project. Tables/views as shown in Supabase Studio.
 
 | Table | Purpose |
 |-------|--------|
-| `Pre_Staging` | (Pre-staging import) |
+| `pre_staging` | Landing table for merchant DB CSV uploads; process moves new rows to staging, dupes to staging_quarantine (migration 006) |
+| `staging_quarantine` | Duplicates from pre_staging that already exist in staging; audit only (migration 006) |
+| `staging_import_job` | Per-upload counts: pre_staging_count, dup_count, inserted_count (migration 006) |
 | `Staging` | Staging / prefill lookup (capital S) |
 | `staging` | Staging (lowercase; see deploy-merchant-db) |
 | `abandoned_application_progress` | Abandonment tracking |
